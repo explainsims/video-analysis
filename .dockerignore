@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.github
+.vscode
+.env*
+!.env.production
+README.md
+__tests__
+coverage
+*.log
+.DS_Store
