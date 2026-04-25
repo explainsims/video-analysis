@@ -65,6 +65,8 @@ export interface AnalysisState {
   projectName: string;
   /** The currently-selected tracked point (only set when mode === 'delete'). */
   selectedPoint: SelectedPoint | null;
+  /** Playback rate (1 = real time, 0.5 = half speed, etc.). */
+  playSpeed: number;
 
   // UI
   mode: Mode;
@@ -85,6 +87,7 @@ export interface AnalysisState {
 
   setProjectName: (s: string) => void;
   setSelectedPoint: (p: SelectedPoint | null) => void;
+  setPlaySpeed: (n: number) => void;
 
   setPendingCalibrationP1: (p: Vec2 | null) => void;
   setCalibration: (c: Calibration | null) => void;
@@ -154,6 +157,7 @@ const initial = (): Pick<
   | "expandedPane"
   | "projectName"
   | "selectedPoint"
+  | "playSpeed"
   | "mode"
   | "pendingCalibrationP1"
 > => {
@@ -174,6 +178,7 @@ const initial = (): Pick<
     expandedPane: null,
     projectName: "Untitled project",
     selectedPoint: null,
+    playSpeed: 1,
     mode: "idle",
     pendingCalibrationP1: null,
   };
@@ -217,6 +222,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
 
   setProjectName: (s) => set({ projectName: s }),
   setSelectedPoint: (p) => set({ selectedPoint: p }),
+  setPlaySpeed: (n) => set({ playSpeed: Math.max(0.05, Math.min(4, n)) }),
 
   setPendingCalibrationP1: (p) => set({ pendingCalibrationP1: p }),
   setCalibration: (c) => set({ calibration: c }),

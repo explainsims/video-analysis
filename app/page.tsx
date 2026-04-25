@@ -71,12 +71,17 @@ export default function Page() {
       <TopBar />
       <ActionRibbon />
       {expandedPane ? (
-        <div className="flex-1 flex flex-col p-4 min-h-0">
-          {expandedPane === "video" ? (
-            <VideoPane engineRef={engineRef} fps={fps} />
-          ) : (
-            <GraphPane onScrub={seekToFrame} />
-          )}
+        <div
+          className="flex-1 grid p-4 gap-0 min-h-0 min-w-0"
+          style={{ gridTemplateRows: "1fr", gridTemplateColumns: "1fr" }}
+        >
+          <div className="min-h-0 min-w-0">
+            {expandedPane === "video" ? (
+              <VideoPane engineRef={engineRef} fps={fps} />
+            ) : (
+              <GraphPane onScrub={seekToFrame} />
+            )}
+          </div>
         </div>
       ) : (
         <div

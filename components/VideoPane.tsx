@@ -25,6 +25,13 @@ interface Props {
   fps: number;
 }
 
+const SPEED_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: "1×" },
+  { value: 0.5, label: "½" },
+  { value: 0.25, label: "¼" },
+  { value: 0.125, label: "⅛" },
+];
+
 export function VideoPane({ engineRef, fps }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -48,6 +55,8 @@ export function VideoPane({ engineRef, fps }: Props) {
   const expandedPane = useAnalysisStore((s) => s.expandedPane);
   const setExpandedPane = useAnalysisStore((s) => s.setExpandedPane);
   const clearPoints = useAnalysisStore((s) => s.clearPoints);
+  const playSpeed = useAnalysisStore((s) => s.playSpeed);
+  const setPlaySpeed = useAnalysisStore((s) => s.setPlaySpeed);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -66,6 +75,12 @@ export function VideoPane({ engineRef, fps }: Props) {
   useEffect(() => {
     engineRef.current?.setFps(fps);
   }, [fps, engineRef]);
+
+  // Keep the <video>'s playbackRate in sync with the chosen play speed.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) v.playbackRate = playSpeed;
+  }, [playSpeed, videoUrl]);
 
   useEffect(() => {
     const id = setInterval(
@@ -317,6 +332,36 @@ export function VideoPane({ engineRef, fps }: Props) {
           >
             {stepSize} <ChevronRight size={14} />
           </button>
+          <div
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface ml-1"
+            style={{ border: "1.5px solid rgb(var(--color-border) / 0.12)" }}
+          >
+            <span className="text-[11px] text-muted font-semibold pr-0.5">
+              Speed
+            </span>
+            {SPEED_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setPlaySpeed(opt.value)}
+                disabled={!video}
+                className="text-[11px] font-bold cursor-pointer rounded-full transition tabular disabled:opacity-50"
+                style={{
+                  padding: "2px 8px",
+                  background:
+                    playSpeed === opt.value
+                      ? "rgb(var(--color-text))"
+                      : "transparent",
+                  color:
+                    playSpeed === opt.value
+                      ? "rgb(var(--color-surface))"
+                      : "rgb(var(--color-muted))",
+                }}
+                title={`Play at ${opt.label} of real-time speed`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
           <div className="flex-1" />
           <span className="font-mono text-[11px] text-muted tabular">
             frame {selectedFrame}

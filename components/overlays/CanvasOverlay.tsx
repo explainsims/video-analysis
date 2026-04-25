@@ -40,6 +40,11 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
   const draggingRotationRef = useRef(false);
   // Live cursor position (in image coords) for the calibrate preview line.
   const [calibrateHover, setCalibrateHover] = useState<Vec2 | null>(null);
+  // Bumped every time the canvas backing-store is resized. Setting
+  // canvas.width / canvas.height clears the bitmap, so we need to force the
+  // redraw effect to re-fire afterward — otherwise tracked points "disappear"
+  // until something else in the store changes.
+  const [sizeVersion, setSizeVersion] = useState(0);
 
   const video = useAnalysisStore((s) => s.video);
   const calibration = useAnalysisStore((s) => s.calibration);
@@ -66,12 +71,18 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
     const update = () => {
       const rect = v.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.round(rect.width * dpr));
-      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      const newW = Math.max(1, Math.round(rect.width * dpr));
+      const newH = Math.max(1, Math.round(rect.height * dpr));
+      const sizeChanged = canvas.width !== newW || canvas.height !== newH;
+      canvas.width = newW;
+      canvas.height = newH;
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
       canvas.style.left = `${v.offsetLeft}px`;
       canvas.style.top = `${v.offsetTop}px`;
+      // Setting width/height blanks the bitmap; bump the version so the
+      // redraw effect re-paints in the same tick.
+      if (sizeChanged) setSizeVersion((n) => n + 1);
     };
     update();
     const ro = new ResizeObserver(update);
@@ -315,7 +326,7 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
     }
     void sx;
     void sy;
-  }, [video, calibration, axes, axesSet, showOverlays, objects, activeObjectId, selectedFrame, mode, pendingP1, calibrateHover, selectedPoint]);
+  }, [video, calibration, axes, axesSet, showOverlays, objects, activeObjectId, selectedFrame, mode, pendingP1, calibrateHover, selectedPoint, sizeVersion]);
 
   // Hit-test the rotation handle in CSS coords against the current canvas.
   const isOnRotationHandle = (cssX: number, cssY: number): boolean => {
