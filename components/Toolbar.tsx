@@ -4,7 +4,6 @@ import {
   Crosshair,
   Download,
   Moon,
-  MoveDiagonal,
   Pause,
   Play,
   Plus,
@@ -146,18 +145,9 @@ export function Toolbar({ engineRef }: { engineRef: RefObject<VideoEngine | null
           data-active={mode === "setOrigin"}
           onClick={() => setMode(mode === "setOrigin" ? "idle" : "setOrigin")}
           disabled={!video}
-          title="Set origin"
+          title="Set origin (then drag the +x handle to rotate)"
         >
           <Crosshair size={14} /> Origin
-        </button>
-        <button
-          className="btn"
-          data-active={mode === "setRotation"}
-          onClick={() => setMode(mode === "setRotation" ? "idle" : "setRotation")}
-          disabled={!video}
-          title="Rotate axes"
-        >
-          <MoveDiagonal size={14} /> Rotate
         </button>
         <button
           className="btn"

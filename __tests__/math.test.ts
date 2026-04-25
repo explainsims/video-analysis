@@ -4,6 +4,7 @@ import {
   fromAxisFrame,
   linearFit,
   metersPerPixel,
+  quadraticFit,
   toAxisFrame,
 } from "../lib/math";
 
@@ -98,5 +99,26 @@ describe("linearFit", () => {
     expect(fit.m).toBeCloseTo(2.5, 10);
     expect(fit.b).toBeCloseTo(1.3, 10);
     expect(fit.r2).toBeCloseTo(1, 10);
+  });
+});
+
+describe("quadraticFit", () => {
+  it("recovers known A, B, C from a noiseless quadratic", () => {
+    const xs = [-2, -1, 0, 1, 2, 3];
+    const ys = xs.map((x) => 0.7 * x * x - 1.4 * x + 0.5);
+    const fit = quadraticFit(xs, ys);
+    expect(fit.A).toBeCloseTo(0.7, 8);
+    expect(fit.B).toBeCloseTo(-1.4, 8);
+    expect(fit.C).toBeCloseTo(0.5, 8);
+    expect(fit.r2).toBeCloseTo(1, 8);
+  });
+
+  it("falls back to linear-equivalent on a perfect line", () => {
+    const xs = [0, 1, 2, 3, 4];
+    const ys = xs.map((x) => 3 * x + 1);
+    const fit = quadraticFit(xs, ys);
+    expect(fit.A).toBeCloseTo(0, 8);
+    expect(fit.B).toBeCloseTo(3, 8);
+    expect(fit.C).toBeCloseTo(1, 8);
   });
 });

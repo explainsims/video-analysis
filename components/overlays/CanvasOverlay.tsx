@@ -10,7 +10,25 @@ interface Props {
 }
 
 const ROTATION_HANDLE_PX = 96;
+const HANDLE_RADIUS_PX = 12;
 const AXIS_DRAW_LEN_PX = 90;
+
+/**
+ * Image-space direction vectors for the physics axes given a physics-frame
+ * rotation θ (CCW positive in standard math convention, with y-up).
+ *
+ * Image y grows downward, so we negate the y-component to map physics-up to
+ * screen-up. y-axis is the x-axis rotated 90° CCW visually.
+ */
+function axisDirs(theta: number): { xDir: Vec2; yDir: Vec2 } {
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  // physics +x = (cosθ, sinθ); screen vec = (cosθ, -sinθ) (y-flip)
+  // physics +y is +x rotated 90° CCW visually; in screen coords with y-down
+  // a 90° visual-CCW rotation maps (vx, vy) → (vy, -vx).
+  // → ( -sinθ, -cosθ )
+  return { xDir: [c, -s], yDir: [-s, -c] };
+}
 
 export function CanvasOverlay({ videoRef }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -90,29 +108,16 @@ export function CanvasOverlay({ videoRef }: Props) {
       );
     }
 
-    // Pending calibration first-click marker
     if (mode === "calibrate" && pendingP1) {
       drawHandle(ctx, toCss(pendingP1), "#FBBF24");
     }
 
-    // --- Axes (only meaningful once calibrated, but origin/rotation can be set early) ---
+    // --- Axes (rigid 90° pair, always perpendicular) ---
     {
       const o = toCss(axes.originPx);
-      // x-axis direction in image space (image-y grows down → match toAxisFrame convention)
-      const cosT = Math.cos(axes.rotationRad);
-      const sinT = Math.sin(axes.rotationRad);
-      // x-axis points along (cos, sin) in image-pixel space
-      const xEnd: Vec2 = [o[0] + AXIS_DRAW_LEN_PX * cosT, o[1] + AXIS_DRAW_LEN_PX * sinT];
-      // y-axis is +90deg from x in physics space, which in image-pixel space is (-sin, cos)
-      // But image y is flipped, so visually we negate the image-y direction.
-      const yEnd: Vec2 = [o[0] - AXIS_DRAW_LEN_PX * sinT, o[1] + AXIS_DRAW_LEN_PX * cosT];
-      // Wait — the line above draws +y in physics down in image. We want +y to look "up" on
-      // the screen for the physics frame. The actual image-pixel direction of physics +y is
-      // the direction in which y-coordinate INCREASES when we move along it. From the math
-      // module: y_phys = -dx*sinT + dy*cosT  with dy = -(pyPx - oPyPx). So an increase in
-      // y_phys corresponds to image-pixel direction (-sinT, -cosT).
-      const yEndUp: Vec2 = [o[0] - AXIS_DRAW_LEN_PX * sinT, o[1] - AXIS_DRAW_LEN_PX * cosT];
-      void yEnd;
+      const { xDir, yDir } = axisDirs(axes.rotationRad);
+      const xEnd: Vec2 = [o[0] + AXIS_DRAW_LEN_PX * xDir[0], o[1] + AXIS_DRAW_LEN_PX * xDir[1]];
+      const yEnd: Vec2 = [o[0] + AXIS_DRAW_LEN_PX * yDir[0], o[1] + AXIS_DRAW_LEN_PX * yDir[1]];
 
       // x axis (cyan, solid)
       ctx.strokeStyle = "rgba(34, 211, 238, 0.9)";
@@ -124,13 +129,13 @@ export function CanvasOverlay({ videoRef }: Props) {
       drawArrowHead(ctx, o, xEnd, "rgba(34, 211, 238, 0.9)");
 
       // y axis (cyan, dimmer)
-      ctx.strokeStyle = "rgba(34, 211, 238, 0.55)";
+      ctx.strokeStyle = "rgba(34, 211, 238, 0.6)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(o[0], o[1]);
-      ctx.lineTo(yEndUp[0], yEndUp[1]);
+      ctx.lineTo(yEnd[0], yEnd[1]);
       ctx.stroke();
-      drawArrowHead(ctx, o, yEndUp, "rgba(34, 211, 238, 0.55)");
+      drawArrowHead(ctx, o, yEnd, "rgba(34, 211, 238, 0.6)");
 
       // Origin marker
       ctx.fillStyle = "#22D3EE";
@@ -138,18 +143,26 @@ export function CanvasOverlay({ videoRef }: Props) {
       ctx.arc(o[0], o[1], 4, 0, Math.PI * 2);
       ctx.fill();
 
-      // Rotation handle along +x at fixed CSS distance
+      // Rotation handle along +x at fixed CSS distance, with "+x" label inside.
       const handle: Vec2 = [
-        o[0] + ROTATION_HANDLE_PX * cosT,
-        o[1] + ROTATION_HANDLE_PX * sinT,
+        o[0] + ROTATION_HANDLE_PX * xDir[0],
+        o[1] + ROTATION_HANDLE_PX * xDir[1],
       ];
-      ctx.fillStyle = mode === "setRotation" ? "#FBBF24" : "rgba(34,211,238,0.85)";
+      const dragging = draggingRotationRef.current;
+      ctx.fillStyle = dragging ? "#FBBF24" : "#22D3EE";
+      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(handle[0], handle[1], 6, 0, Math.PI * 2);
+      ctx.arc(handle[0], handle[1], HANDLE_RADIUS_PX, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.45)";
-      ctx.lineWidth = 1;
       ctx.stroke();
+      ctx.fillStyle = "#0B0B12";
+      ctx.font = "bold 11px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("+x", handle[0], handle[1] + 0.5);
+      ctx.textAlign = "start";
+      ctx.textBaseline = "alphabetic";
     }
 
     // --- Tracked points ---
@@ -207,15 +220,55 @@ export function CanvasOverlay({ videoRef }: Props) {
     void sy;
   }, [video, calibration, axes, objects, activeObjectId, selectedFrame, mode, pendingP1]);
 
+  // Hit-test the rotation handle in CSS coords against the current canvas.
+  const isOnRotationHandle = (cssX: number, cssY: number): boolean => {
+    const v = video;
+    const canvas = canvasRef.current;
+    if (!v || !canvas) return false;
+    const rect = canvas.getBoundingClientRect();
+    const sx = rect.width / v.width;
+    const sy = rect.height / v.height;
+    const oCss: Vec2 = [axes.originPx[0] * sx, axes.originPx[1] * sy];
+    const { xDir } = axisDirs(axes.rotationRad);
+    const handle: Vec2 = [
+      oCss[0] + ROTATION_HANDLE_PX * xDir[0],
+      oCss[1] + ROTATION_HANDLE_PX * xDir[1],
+    ];
+    return Math.hypot(cssX - handle[0], cssY - handle[1]) <= HANDLE_RADIUS_PX + 4;
+  };
+
+  const updateRotationFromImagePoint = (ix: number, iy: number) => {
+    const state = useAnalysisStore.getState();
+    const dx = ix - state.axes.originPx[0];
+    const dy = iy - state.axes.originPx[1];
+    // Physics convention: y-up, so flip image-y. θ = atan2(dy_phys, dx).
+    state.setRotation(Math.atan2(-dy, dx));
+  };
+
   // ---- Pointer interaction ----
   const onPointerDown = (e: React.PointerEvent) => {
     const canvas = canvasRef.current;
     if (!canvas || !video) return;
-    canvas.setPointerCapture(e.pointerId);
+
+    const rect = canvas.getBoundingClientRect();
+    const cssX = e.clientX - rect.left;
+    const cssY = e.clientY - rect.top;
     const [ix, iy] = pointerToImageCoords(e, canvas, video.width, video.height);
     const state = useAnalysisStore.getState();
 
+    // Rotation handle drag is always available regardless of mode (it's a
+    // direct-manipulation widget, not a separate tool).
+    if (state.mode === "idle" && isOnRotationHandle(cssX, cssY)) {
+      canvas.setPointerCapture(e.pointerId);
+      draggingRotationRef.current = true;
+      updateRotationFromImagePoint(ix, iy);
+      // trigger redraw to highlight the handle
+      state.setMode("idle");
+      return;
+    }
+
     if (state.mode === "calibrate") {
+      canvas.setPointerCapture(e.pointerId);
       if (!state.pendingCalibrationP1) {
         state.setPendingCalibrationP1([ix, iy]);
       } else {
@@ -238,20 +291,14 @@ export function CanvasOverlay({ videoRef }: Props) {
     }
 
     if (state.mode === "setOrigin") {
+      canvas.setPointerCapture(e.pointerId);
       state.setOrigin([ix, iy]);
       state.setMode("idle");
       return;
     }
 
-    if (state.mode === "setRotation") {
-      draggingRotationRef.current = true;
-      const dx = ix - state.axes.originPx[0];
-      const dy = iy - state.axes.originPx[1];
-      state.setRotation(Math.atan2(dy, dx));
-      return;
-    }
-
     if (state.mode === "track" && state.calibration) {
+      canvas.setPointerCapture(e.pointerId);
       const fpsNow = effectiveFps(state);
       state.addPoint(state.selectedFrame, state.selectedFrame / fpsNow, ix, iy);
       const nextFrame = state.selectedFrame + state.stepSize;
@@ -264,24 +311,31 @@ export function CanvasOverlay({ videoRef }: Props) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!draggingRotationRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas || !video) return;
-    const [ix, iy] = pointerToImageCoords(e, canvas, video.width, video.height);
-    const state = useAnalysisStore.getState();
-    const dx = ix - state.axes.originPx[0];
-    const dy = iy - state.axes.originPx[1];
-    state.setRotation(Math.atan2(dy, dx));
+    if (draggingRotationRef.current) {
+      const [ix, iy] = pointerToImageCoords(e, canvas, video.width, video.height);
+      updateRotationFromImagePoint(ix, iy);
+      return;
+    }
+    // hover affordance for the handle when idle
+    if (mode === "idle") {
+      const rect = canvas.getBoundingClientRect();
+      const cssX = e.clientX - rect.left;
+      const cssY = e.clientY - rect.top;
+      canvas.style.cursor = isOnRotationHandle(cssX, cssY) ? "grab" : "default";
+    }
   };
 
   const onPointerUp = () => {
     if (draggingRotationRef.current) {
       draggingRotationRef.current = false;
+      // force a redraw so the handle returns to its idle color
       useAnalysisStore.getState().setMode("idle");
     }
   };
 
-  const interactive = mode !== "idle";
+  const interactive = mode !== "idle" || video !== null;
 
   return (
     <canvas
@@ -290,7 +344,7 @@ export function CanvasOverlay({ videoRef }: Props) {
       style={{
         pointerEvents: interactive ? "auto" : "none",
         touchAction: "none",
-        cursor: interactive ? "crosshair" : "default",
+        cursor: mode !== "idle" ? "crosshair" : "default",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
