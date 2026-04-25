@@ -170,6 +170,13 @@ export interface LinearFit {
   r2: number;
 }
 
+export interface QuadraticFit {
+  A: number;
+  B: number;
+  C: number;
+  r2: number;
+}
+
 export function linearFit(xs: number[], ys: number[]): LinearFit {
   const n = xs.length;
   if (n < 2) return { m: 0, b: ys[0] ?? 0, r2: 0 };
@@ -197,4 +204,67 @@ export function linearFit(xs: number[], ys: number[]): LinearFit {
   }
   const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
   return { m, b, r2 };
+}
+
+/**
+ * Least-squares fit of y = A*x^2 + B*x + C using the normal equations on the
+ * 3x3 system (X^T X) [A B C]^T = X^T y. Inverted in closed form for clarity.
+ */
+export function quadraticFit(xs: number[], ys: number[]): QuadraticFit {
+  const n = xs.length;
+  if (n < 3) {
+    if (n === 2) {
+      const lf = linearFit(xs, ys);
+      return { A: 0, B: lf.m, C: lf.b, r2: lf.r2 };
+    }
+    return { A: 0, B: 0, C: ys[0] ?? 0, r2: 0 };
+  }
+  let s0 = n,
+    s1 = 0,
+    s2 = 0,
+    s3 = 0,
+    s4 = 0;
+  let t0 = 0,
+    t1 = 0,
+    t2 = 0;
+  for (let i = 0; i < n; i++) {
+    const x = xs[i];
+    const x2 = x * x;
+    s1 += x;
+    s2 += x2;
+    s3 += x2 * x;
+    s4 += x2 * x2;
+    t0 += ys[i];
+    t1 += ys[i] * x;
+    t2 += ys[i] * x2;
+  }
+  // Solve the 3x3 system:
+  //   [s4 s3 s2] [A]   [t2]
+  //   [s3 s2 s1] [B] = [t1]
+  //   [s2 s1 s0] [C]   [t0]
+  const det =
+    s4 * (s2 * s0 - s1 * s1) -
+    s3 * (s3 * s0 - s1 * s2) +
+    s2 * (s3 * s1 - s2 * s2);
+  if (Math.abs(det) < 1e-12) {
+    const lf = linearFit(xs, ys);
+    return { A: 0, B: lf.m, C: lf.b, r2: lf.r2 };
+  }
+  const A =
+    (t2 * (s2 * s0 - s1 * s1) - s3 * (t1 * s0 - s1 * t0) + s2 * (t1 * s1 - s2 * t0)) / det;
+  const B =
+    (s4 * (t1 * s0 - s1 * t0) - t2 * (s3 * s0 - s1 * s2) + s2 * (s3 * t0 - t1 * s2)) / det;
+  const C =
+    (s4 * (s2 * t0 - t1 * s1) - s3 * (s3 * t0 - t1 * s2) + t2 * (s3 * s1 - s2 * s2)) / det;
+
+  let ssRes = 0,
+    ssTot = 0;
+  const yMean = t0 / n;
+  for (let i = 0; i < n; i++) {
+    const yi = A * xs[i] * xs[i] + B * xs[i] + C;
+    ssRes += (ys[i] - yi) ** 2;
+    ssTot += (ys[i] - yMean) ** 2;
+  }
+  const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
+  return { A, B, C, r2 };
 }

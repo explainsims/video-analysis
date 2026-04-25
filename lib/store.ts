@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import type { Axes, Calibration, Vec2 } from "./math";
 
-export type Mode = "idle" | "calibrate" | "setOrigin" | "setRotation" | "track";
+export type Mode = "idle" | "calibrate" | "setOrigin" | "track";
 
 export interface TrackedPoint {
   frame: number;
