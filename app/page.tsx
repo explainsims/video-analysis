@@ -51,24 +51,36 @@ export default function Page() {
     setSelectedFrame(n);
   };
 
+  const expandedPane = useAnalysisStore((s) => s.expandedPane);
+
   return (
     <main className="min-h-screen flex flex-col bg-bg">
       <TopBar />
       <ActionRibbon />
-      <div
-        className="flex-1 grid gap-4 p-4 grid-cols-1 lg:grid-cols-[1.55fr_1fr]"
-        style={{ gridTemplateRows: "minmax(280px, 1fr) minmax(180px, auto)" }}
-      >
-        <div className="min-h-[280px] min-w-0">
-          <VideoPane engineRef={engineRef} fps={fps} />
+      {expandedPane ? (
+        <div className="flex-1 p-4 min-h-0">
+          {expandedPane === "video" ? (
+            <VideoPane engineRef={engineRef} fps={fps} />
+          ) : (
+            <GraphPane onScrub={seekToFrame} />
+          )}
         </div>
-        <div className="min-h-[280px] min-w-0">
-          <GraphPane onScrub={seekToFrame} />
+      ) : (
+        <div
+          className="flex-1 grid gap-4 p-4 grid-cols-1 lg:grid-cols-[1.55fr_1fr]"
+          style={{ gridTemplateRows: "minmax(280px, 1fr) minmax(180px, auto)" }}
+        >
+          <div className="min-h-[280px] min-w-0">
+            <VideoPane engineRef={engineRef} fps={fps} />
+          </div>
+          <div className="min-h-[280px] min-w-0">
+            <GraphPane onScrub={seekToFrame} />
+          </div>
+          <div className="lg:col-span-2 min-h-[180px]">
+            <TablePane onSelect={seekToFrame} />
+          </div>
         </div>
-        <div className="lg:col-span-2 min-h-[180px]">
-          <TablePane onSelect={seekToFrame} />
-        </div>
-      </div>
+      )}
       <Modals />
     </main>
   );

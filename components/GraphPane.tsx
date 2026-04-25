@@ -1,10 +1,11 @@
 "use client";
 
-import { Eraser, FunctionSquare, TrendingUp } from "lucide-react";
+import { Eraser, FunctionSquare, Maximize2, Minimize2, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   ComposedChart,
+  Label,
   Line,
   ReferenceArea,
   ReferenceLine,
@@ -18,74 +19,77 @@ import { deriveObject, type DerivedRow } from "@/lib/derived";
 import { linearFit, quadraticFit } from "@/lib/math";
 import { useAnalysisStore } from "@/lib/store";
 
-type GraphMode = "xt" | "yt" | "xy" | "vt";
+type GraphMode = "xt" | "yt" | "vxt" | "vyt";
 type FitKind = "linear" | "quadratic";
 
 interface ModeDef {
   id: GraphMode;
-  label: string;
-  /** Y-axis unit display. */
+  /** Plain-text label for tooltips / footer (no Unicode subscripts). */
+  shortLabel: string;
+  /** Rich React label for the mode pill, with real subscripts. */
+  pillLabel: React.ReactNode;
+  /** Y-axis label, also rich. */
+  yAxisLabel: React.ReactNode;
+  /** Y-axis units, plain text. */
   yUnit: string;
   /** Build chart rows from derived data. */
   build: (rows: DerivedRow[]) => ChartRow[];
-  /** Series colors (1 or 2 series). Object color is the default for primary. */
-  legend: { key: string; label: string; color: string | "object" | "objectAlt" }[];
-  /** X-axis label. */
-  xLabel: string;
-  /** Whether this mode supports curve fitting. */
-  fittable: boolean;
 }
 
 interface ChartRow {
-  /** X-axis value (t for x-t/y-t/v-t, x for x-y). */
-  xv: number;
+  t: number;
   frame: number;
-  /** Primary series value. */
-  v1: number;
-  /** Optional secondary series value (used by v-t for vy). */
-  v2?: number;
+  v: number;
 }
 
 const MODES: ModeDef[] = [
   {
     id: "xt",
-    label: "x vs t",
+    shortLabel: "x vs t",
+    pillLabel: <>x vs t</>,
+    yAxisLabel: <>x (m)</>,
     yUnit: "m",
-    xLabel: "t (s)",
-    fittable: true,
-    legend: [{ key: "v1", label: "x", color: "object" }],
-    build: (rows) => rows.map((r) => ({ xv: r.t, frame: r.frame, v1: r.x })),
+    build: (rows) => rows.map((r) => ({ t: r.t, frame: r.frame, v: r.x })),
   },
   {
     id: "yt",
-    label: "y vs t",
+    shortLabel: "y vs t",
+    pillLabel: <>y vs t</>,
+    yAxisLabel: <>y (m)</>,
     yUnit: "m",
-    xLabel: "t (s)",
-    fittable: true,
-    legend: [{ key: "v1", label: "y", color: "object" }],
-    build: (rows) => rows.map((r) => ({ xv: r.t, frame: r.frame, v1: r.y })),
+    build: (rows) => rows.map((r) => ({ t: r.t, frame: r.frame, v: r.y })),
   },
   {
-    id: "xy",
-    label: "y vs x",
-    yUnit: "m",
-    xLabel: "x (m)",
-    fittable: false,
-    legend: [{ key: "v1", label: "trajectory", color: "object" }],
-    build: (rows) => rows.map((r) => ({ xv: r.x, frame: r.frame, v1: r.y })),
-  },
-  {
-    id: "vt",
-    label: "v vs t",
+    id: "vxt",
+    shortLabel: "vx vs t",
+    pillLabel: (
+      <>
+        v<sub>x</sub> vs t
+      </>
+    ),
+    yAxisLabel: (
+      <>
+        v<sub>x</sub> (m/s)
+      </>
+    ),
     yUnit: "m/s",
-    xLabel: "t (s)",
-    fittable: true,
-    legend: [
-      { key: "v1", label: "vₓ", color: "object" },
-      { key: "v2", label: "vᵧ", color: "objectAlt" },
-    ],
-    build: (rows) =>
-      rows.map((r) => ({ xv: r.t, frame: r.frame, v1: r.vx, v2: r.vy })),
+    build: (rows) => rows.map((r) => ({ t: r.t, frame: r.frame, v: r.vx })),
+  },
+  {
+    id: "vyt",
+    shortLabel: "vy vs t",
+    pillLabel: (
+      <>
+        v<sub>y</sub> vs t
+      </>
+    ),
+    yAxisLabel: (
+      <>
+        v<sub>y</sub> (m/s)
+      </>
+    ),
+    yUnit: "m/s",
+    build: (rows) => rows.map((r) => ({ t: r.t, frame: r.frame, v: r.vy })),
   },
 ];
 
@@ -99,7 +103,7 @@ interface FitState {
 
 interface ChartMouseEvent {
   activeLabel?: number | string;
-  activePayload?: { payload?: { xv: number; frame: number } }[];
+  activePayload?: { payload?: { t: number; frame: number } }[];
 }
 
 const fmtSig = (n: number, digits = 4): string => {
@@ -114,12 +118,40 @@ const fmtSig = (n: number, digits = 4): string => {
   return n.toExponential(digits - 1);
 };
 
+/**
+ * Generate ~tickCount evenly-spaced "nice" tick values across [min, max].
+ * Picks a step that's a multiple of 1/2/5 × 10^k so labels are readable.
+ */
+function niceTicks(min: number, max: number, tickCount = 6): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
+    return [min];
+  }
+  const range = max - min;
+  const rough = range / Math.max(1, tickCount - 1);
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+  const f = rough / pow;
+  let step: number;
+  if (f < 1.5) step = 1 * pow;
+  else if (f < 3) step = 2 * pow;
+  else if (f < 7) step = 5 * pow;
+  else step = 10 * pow;
+  const start = Math.ceil(min / step) * step;
+  const out: number[] = [];
+  for (let v = start; v <= max + step * 1e-9; v += step) {
+    out.push(Number(v.toFixed(12))); // prevent FP drift
+  }
+  return out;
+}
+
 export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
   const objects = useAnalysisStore((s) => s.objects);
   const activeObjectId = useAnalysisStore((s) => s.activeObjectId);
   const calibration = useAnalysisStore((s) => s.calibration);
   const axes = useAnalysisStore((s) => s.axes);
   const selectedFrame = useAnalysisStore((s) => s.selectedFrame);
+  const zeroFirstPoint = useAnalysisStore((s) => s.zeroFirstPoint);
+  const expandedPane = useAnalysisStore((s) => s.expandedPane);
+  const setExpandedPane = useAnalysisStore((s) => s.setExpandedPane);
   const [graphMode, setGraphMode] = useState<GraphMode>("xt");
 
   const [selStart, setSelStart] = useState<number | null>(null);
@@ -129,23 +161,22 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
 
   const active = objects.find((o) => o.id === activeObjectId);
   const objColor = active?.color ?? "#2563eb";
-  const objAltColor = "#db2777";
 
   const derived = useMemo(
-    () => (active ? deriveObject(active, calibration, axes) : []),
-    [active, calibration, axes]
+    () => (active ? deriveObject(active, calibration, axes, { zeroFirstPoint }) : []),
+    [active, calibration, axes, zeroFirstPoint]
   );
 
   const def = MODES.find((m) => m.id === graphMode)!;
   const data = useMemo(() => def.build(derived), [def, derived]);
 
-  // Reset fit/selection on mode/object/series change
+  // Reset fit/selection on mode/object change.
   useEffect(() => {
     setFit(null);
     setSelStart(null);
     setSelEnd(null);
     setDragging(false);
-  }, [graphMode, activeObjectId]);
+  }, [graphMode, activeObjectId, zeroFirstPoint]);
 
   const cursor = data.find((d) => d.frame === selectedFrame);
 
@@ -153,6 +184,34 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
     selStart !== null && selEnd !== null
       ? [Math.min(selStart, selEnd), Math.max(selStart, selEnd)]
       : null;
+
+  // Domain & ticks (consistent, evenly-spaced) derived from data range.
+  const tDomain = useMemo<[number, number]>(() => {
+    if (data.length === 0) return [0, 1];
+    const min = data[0].t;
+    const max = data[data.length - 1].t;
+    if (min === max) return [min - 0.5, max + 0.5];
+    const pad = (max - min) * 0.04;
+    return [min - pad, max + pad];
+  }, [data]);
+  const tTicks = useMemo(() => niceTicks(tDomain[0], tDomain[1], 7), [tDomain]);
+
+  const yDomain = useMemo<[number, number]>(() => {
+    if (data.length === 0) return [0, 1];
+    let min = Infinity;
+    let max = -Infinity;
+    for (const d of data) {
+      if (Number.isFinite(d.v)) {
+        if (d.v < min) min = d.v;
+        if (d.v > max) max = d.v;
+      }
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+    if (min === max) return [min - 0.5, max + 0.5];
+    const pad = (max - min) * 0.1;
+    return [min - pad, max + pad];
+  }, [data]);
+  const yTicks = useMemo(() => niceTicks(yDomain[0], yDomain[1], 6), [yDomain]);
 
   const numericLabel = (e: ChartMouseEvent): number | null => {
     const lbl = e.activeLabel;
@@ -162,16 +221,10 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
       return Number.isFinite(n) ? n : null;
     }
     const pl = e.activePayload?.[0]?.payload;
-    return pl && typeof pl.xv === "number" ? pl.xv : null;
+    return pl && typeof pl.t === "number" ? pl.t : null;
   };
 
   const handleMouseDown = (e: ChartMouseEvent) => {
-    if (!def.fittable) {
-      // No drag-select for x-y mode; fall back to scrub on click.
-      const pl = e.activePayload?.[0]?.payload;
-      if (pl) onScrub(pl.frame);
-      return;
-    }
     const t = numericLabel(e);
     if (t === null) return;
     setDragging(true);
@@ -194,7 +247,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
     }
     setDragging(false);
     if (selStart !== null && selEnd !== null && Math.abs(selEnd - selStart) < 1e-6) {
-      const r = data.find((d) => Math.abs(d.xv - selStart) < 1e-9);
+      const r = data.find((d) => Math.abs(d.t - selStart) < 1e-9);
       setSelStart(null);
       setSelEnd(null);
       if (r) onScrub(r.frame);
@@ -210,18 +263,18 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
   const applyFit = (kind: FitKind) => {
     if (!selRange) return;
     const [t0, t1] = selRange;
-    const inRange = data.filter((d) => d.xv >= t0 && d.xv <= t1);
+    const inRange = data.filter((d) => d.t >= t0 && d.t <= t1);
     if (kind === "linear" && inRange.length < 2) return;
     if (kind === "quadratic" && inRange.length < 3) return;
-    const xs = inRange.map((d) => d.xv);
-    const ys = inRange.map((d) => d.v1);
+    const xs = inRange.map((d) => d.t);
+    const ys = inRange.map((d) => d.v);
     if (kind === "linear") {
       const lf = linearFit(xs, ys);
       setFit({
         kind,
         range: selRange,
         fn: (x) => lf.m * x + lf.b,
-        equation: `y = ${fmtSig(lf.m)} x + ${fmtSig(lf.b)}`,
+        equation: `y = ${fmtSig(lf.m)} t + ${fmtSig(lf.b)}`,
         r2: lf.r2,
       });
     } else {
@@ -230,7 +283,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
         kind,
         range: selRange,
         fn: (x) => qf.A * x * x + qf.B * x + qf.C,
-        equation: `y = ${fmtSig(qf.A)} x² + ${fmtSig(qf.B)} x + ${fmtSig(qf.C)}`,
+        equation: `y = ${fmtSig(qf.A)} t² + ${fmtSig(qf.B)} t + ${fmtSig(qf.C)}`,
         r2: qf.r2,
       });
     }
@@ -241,31 +294,32 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
     if (!fit) return [];
     const [a, b] = fit.range;
     const N = 64;
-    const out: { xv: number; fitValue: number }[] = [];
+    const out: { t: number; fitValue: number }[] = [];
     for (let i = 0; i <= N; i++) {
       const x = a + ((b - a) * i) / N;
-      out.push({ xv: x, fitValue: fit.fn(x) });
+      out.push({ t: x, fitValue: fit.fn(x) });
     }
     return out;
   }, [fit]);
 
-  // Merge primary data + secondary (vᵧ) + fit into a single dataset for ComposedChart
   const merged = useMemo(() => {
-    type Row = { xv: number; frame?: number; v1?: number; v2?: number; fitValue?: number };
+    type Row = { t: number; frame?: number; v?: number; fitValue?: number };
     const map = new Map<number, Row>();
-    for (const d of data) map.set(d.xv, { xv: d.xv, frame: d.frame, v1: d.v1, v2: d.v2 });
+    for (const d of data) map.set(d.t, { t: d.t, frame: d.frame, v: d.v });
     for (const f of fitData) {
-      const existing = map.get(f.xv);
+      const existing = map.get(f.t);
       if (existing) existing.fitValue = f.fitValue;
-      else map.set(f.xv, { xv: f.xv, fitValue: f.fitValue });
+      else map.set(f.t, { t: f.t, fitValue: f.fitValue });
     }
-    return Array.from(map.values()).sort((a, b) => a.xv - b.xv);
+    return Array.from(map.values()).sort((a, b) => a.t - b.t);
   }, [data, fitData]);
 
   const rangeCount = (range: [number, number]) =>
-    data.filter((d) => d.xv >= range[0] && d.xv <= range[1]).length;
-  const canFitLinear = !!selRange && def.fittable && rangeCount(selRange) >= 2;
-  const canFitQuad = !!selRange && def.fittable && rangeCount(selRange) >= 3;
+    data.filter((d) => d.t >= range[0] && d.t <= range[1]).length;
+  const canFitLinear = !!selRange && rangeCount(selRange) >= 2;
+  const canFitQuad = !!selRange && rangeCount(selRange) >= 3;
+
+  const isExpanded = expandedPane === "graph";
 
   return (
     <div className="card h-full">
@@ -278,20 +332,31 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
             onClick={() => setGraphMode(m.id)}
             data-active={graphMode === m.id}
             className="btn-soft"
-            style={{ padding: "5px 10px", fontSize: 11 }}
+            style={{ padding: "6px 12px", fontSize: 13 }}
           >
-            {m.label}
+            {m.pillLabel}
           </button>
         ))}
+        <button
+          onClick={() => setExpandedPane(isExpanded ? null : "graph")}
+          className="btn-soft"
+          style={{ padding: "5px 8px", fontSize: 11, marginLeft: 4 }}
+          title={isExpanded ? "Restore split layout" : "Expand to fill window"}
+        >
+          {isExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+        </button>
       </div>
 
-      <div className="flex items-center gap-1.5 px-4 py-2 border-b" style={{ borderColor: "rgb(var(--color-border) / 0.07)" }}>
+      <div
+        className="flex items-center gap-1.5 px-4 py-2 border-b"
+        style={{ borderColor: "rgb(var(--color-border) / 0.07)" }}
+      >
         <button
           className="btn-soft"
           style={{ padding: "4px 10px", fontSize: 11 }}
           onClick={() => applyFit("linear")}
           disabled={!canFitLinear}
-          title="Drag a range on the chart, then apply a linear fit"
+          title="Drag a horizontal range on the chart, then apply a linear fit"
         >
           <TrendingUp size={12} /> Line of best fit
         </button>
@@ -314,8 +379,10 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
           </button>
         )}
         <div className="flex-1" />
-        {!def.fittable && (
-          <span className="text-[11px] text-muted">Fitting available on x-t, y-t, v-t.</span>
+        {zeroFirstPoint && (
+          <span className="text-[11px] text-muted">
+            t = 0 set to first tracked point
+          </span>
         )}
       </div>
 
@@ -328,7 +395,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={merged}
-              margin={{ top: 12, right: 18, left: -8, bottom: 4 }}
+              margin={{ top: 16, right: 24, left: 24, bottom: 36 }}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
@@ -336,23 +403,49 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
             >
               <CartesianGrid stroke="rgb(var(--color-border) / 0.10)" strokeDasharray="3 3" />
               <XAxis
-                dataKey="xv"
+                dataKey="t"
                 type="number"
-                domain={["dataMin", "dataMax"]}
+                domain={tDomain}
+                ticks={tTicks}
                 tickFormatter={(v: number) => v.toFixed(2)}
                 stroke="rgb(var(--color-muted))"
-                style={{ fontSize: 11, fontFamily: "ui-monospace, monospace" }}
-                label={{
-                  value: def.xLabel,
-                  fill: "rgb(var(--color-muted))",
-                  fontSize: 11,
-                  dy: 8,
-                }}
-              />
+                tick={{ fontSize: 12, fontFamily: "ui-monospace, monospace" }}
+                tickMargin={8}
+                height={48}
+              >
+                <Label
+                  value="t (s)"
+                  position="insideBottom"
+                  offset={-12}
+                  style={{
+                    fill: "rgb(var(--color-text))",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: "var(--font-sans), Inter, sans-serif",
+                  }}
+                />
+              </XAxis>
               <YAxis
+                domain={yDomain}
+                ticks={yTicks}
                 stroke="rgb(var(--color-muted))"
-                style={{ fontSize: 11, fontFamily: "ui-monospace, monospace" }}
+                tick={{ fontSize: 12, fontFamily: "ui-monospace, monospace" }}
                 tickFormatter={(v: number) => v.toFixed(2)}
+                tickMargin={6}
+                width={64}
+                label={{
+                  value: def.shortLabel.split(" vs ")[0] + ` (${def.yUnit})`,
+                  angle: -90,
+                  position: "insideLeft",
+                  offset: 0,
+                  style: {
+                    fill: "rgb(var(--color-text))",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: "var(--font-sans), Inter, sans-serif",
+                    textAnchor: "middle",
+                  },
+                }}
               />
               <Tooltip
                 contentStyle={{
@@ -362,7 +455,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
                   fontFamily: "ui-monospace, monospace",
                 }}
                 formatter={(v: number) => v.toFixed(3)}
-                labelFormatter={(v: number) => `${def.xLabel.split(" ")[0]} = ${v.toFixed(3)}`}
+                labelFormatter={(v: number) => `t = ${v.toFixed(3)} s`}
               />
 
               {selRange && (
@@ -375,18 +468,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
                 />
               )}
 
-              <Scatter
-                dataKey="v1"
-                fill={objColor}
-                isAnimationActive={false}
-              />
-              {def.legend.length > 1 && (
-                <Scatter
-                  dataKey="v2"
-                  fill={objAltColor}
-                  isAnimationActive={false}
-                />
-              )}
+              <Scatter dataKey="v" fill={objColor} isAnimationActive={false} />
 
               {fit && (
                 <Line
@@ -400,9 +482,9 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
                 />
               )}
 
-              {cursor && def.id !== "xy" && (
+              {cursor && (
                 <ReferenceLine
-                  x={cursor.xv}
+                  x={cursor.t}
                   stroke="rgb(var(--color-brand))"
                   strokeDasharray="4 3"
                 />
@@ -414,37 +496,34 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
 
       {/* Stats footer */}
       <div className="card-footer flex items-center gap-2 flex-wrap">
-        {def.legend.map((l) => (
-          <span key={l.key} className="flex items-center gap-1.5 text-[11px] text-muted">
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 5,
-                background:
-                  l.color === "object" ? objColor : l.color === "objectAlt" ? objAltColor : l.color,
-              }}
-            />
-            {l.label} ({def.yUnit})
-          </span>
-        ))}
+        <span className="flex items-center gap-1.5 text-[12px] text-muted">
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              background: objColor,
+            }}
+          />
+          {def.yAxisLabel}
+        </span>
         <div className="flex-1" />
         {fit ? (
           <div className="font-mono text-[11px] tabular flex items-center gap-3">
             <span style={{ color: "rgb(var(--color-accent))" }}>{fit.equation}</span>
             <span className="text-muted">R² = {fit.r2.toFixed(4)}</span>
             <span className="text-muted">
-              {def.xLabel.split(" ")[0]} ∈ [{fit.range[0].toFixed(2)}, {fit.range[1].toFixed(2)}]
+              t ∈ [{fit.range[0].toFixed(2)}, {fit.range[1].toFixed(2)}]
             </span>
           </div>
         ) : selRange ? (
           <span className="font-mono text-[11px] text-muted tabular">
-            Selected: {def.xLabel.split(" ")[0]} ∈ [{selRange[0].toFixed(2)},{" "}
-            {selRange[1].toFixed(2)}] — choose a fit above.
+            Selected: t ∈ [{selRange[0].toFixed(2)}, {selRange[1].toFixed(2)}] —
+            choose a fit above.
           </span>
         ) : (
           <span className="text-[11px] text-muted">
-            {def.fittable ? "Drag a horizontal range to enable fitting." : "Scatter mode."}
+            Drag a horizontal range to enable fitting.
           </span>
         )}
       </div>

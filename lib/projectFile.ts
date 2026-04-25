@@ -20,7 +20,12 @@ export function exportProject(state: AnalysisState, projectName: string): Projec
         },
     calibration: state.calibration,
     axes: state.axes,
-    settings: { stepSize: state.stepSize, fpsOverride: state.fpsOverride },
+    axesSet: state.axesSet,
+    settings: {
+      stepSize: state.stepSize,
+      fpsOverride: state.fpsOverride,
+      zeroFirstPoint: state.zeroFirstPoint,
+    },
     objects: state.objects,
   };
 }
