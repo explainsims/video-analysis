@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useRef, type RefObject } from "react";
-import { type Vec2 } from "@/lib/math";
+import { metersPerPixel, type Vec2 } from "@/lib/math";
 import { pointerToImageCoords } from "@/lib/input";
+import { deriveObject } from "@/lib/derived";
 import { effectiveFps, useAnalysisStore } from "@/lib/store";
+import type { VideoEngine } from "@/lib/videoEngine";
 
 interface Props {
   videoRef: RefObject<HTMLVideoElement | null>;
+  engineRef: RefObject<VideoEngine | null>;
+  showTrails?: boolean;
+  showVectors?: boolean;
 }
 
 const ROTATION_HANDLE_PX = 96;
@@ -30,7 +35,12 @@ function axisDirs(theta: number): { xDir: Vec2; yDir: Vec2 } {
   return { xDir: [c, -s], yDir: [-s, -c] };
 }
 
-export function CanvasOverlay({ videoRef }: Props) {
+export function CanvasOverlay({
+  videoRef,
+  engineRef,
+  showTrails = true,
+  showVectors = false,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const draggingRotationRef = useRef(false);
 
@@ -170,7 +180,7 @@ export function CanvasOverlay({ videoRef }: Props) {
       ctx.fillStyle = obj.color;
       ctx.strokeStyle = obj.color;
       ctx.lineWidth = 1.5;
-      if (obj.points.length > 1) {
+      if (showTrails && obj.points.length > 1) {
         ctx.globalAlpha = 0.45;
         ctx.beginPath();
         const first = toCss([obj.points[0].xPx, obj.points[0].yPx]);
@@ -192,6 +202,39 @@ export function CanvasOverlay({ videoRef }: Props) {
           ctx.beginPath();
           ctx.arc(p[0], p[1], 10, 0, Math.PI * 2);
           ctx.stroke();
+        }
+      }
+    }
+
+    // --- Velocity vector overlay (active object, current frame) ---
+    if (showVectors && calibration) {
+      const obj = objects.find((o) => o.id === activeObjectId);
+      const cur = obj?.points.find((p) => p.frame === selectedFrame);
+      if (obj && cur) {
+        const derived = deriveObject(obj, calibration, axes);
+        const d = derived.find((r) => r.frame === selectedFrame);
+        if (d) {
+          // Convert physics-frame velocity (m/s) into image-pixel direction.
+          // The same axisDirs mapping (physics → image) applies to vectors:
+          //   image_dx = vx * xDir + vy * yDir.
+          const { xDir, yDir } = axisDirs(axes.rotationRad);
+          const mPerPx = metersPerPixel(calibration);
+          // Length of the velocity vector in image pixels per second.
+          const ARROW_SECONDS = 0.5; // arrow length = how far the object travels in 0.5 s
+          const lenScale = ARROW_SECONDS / mPerPx;
+          const ivx = (d.vx * xDir[0] + d.vy * yDir[0]) * lenScale;
+          const ivy = (d.vx * xDir[1] + d.vy * yDir[1]) * lenScale;
+          const tail = toCss([cur.xPx, cur.yPx]);
+          const tip: Vec2 = [tail[0] + ivx * sx, tail[1] + ivy * sy];
+          if (Math.hypot(tip[0] - tail[0], tip[1] - tail[1]) > 4) {
+            ctx.strokeStyle = obj.color;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(tail[0], tail[1]);
+            ctx.lineTo(tip[0], tip[1]);
+            ctx.stroke();
+            drawArrowHead(ctx, tail, tip, obj.color);
+          }
         }
       }
     }
@@ -218,7 +261,7 @@ export function CanvasOverlay({ videoRef }: Props) {
     }
     void sx;
     void sy;
-  }, [video, calibration, axes, objects, activeObjectId, selectedFrame, mode, pendingP1]);
+  }, [video, calibration, axes, objects, activeObjectId, selectedFrame, mode, pendingP1, showTrails, showVectors]);
 
   // Hit-test the rotation handle in CSS coords against the current canvas.
   const isOnRotationHandle = (cssX: number, cssY: number): boolean => {
@@ -268,7 +311,6 @@ export function CanvasOverlay({ videoRef }: Props) {
     }
 
     if (state.mode === "calibrate") {
-      canvas.setPointerCapture(e.pointerId);
       if (!state.pendingCalibrationP1) {
         state.setPendingCalibrationP1([ix, iy]);
       } else {
@@ -291,22 +333,19 @@ export function CanvasOverlay({ videoRef }: Props) {
     }
 
     if (state.mode === "setOrigin") {
-      canvas.setPointerCapture(e.pointerId);
       state.setOrigin([ix, iy]);
       state.setMode("idle");
       return;
     }
 
     if (state.mode === "track" && state.calibration) {
-      canvas.setPointerCapture(e.pointerId);
       const fpsNow = effectiveFps(state);
       state.addPoint(state.selectedFrame, state.selectedFrame / fpsNow, ix, iy);
-      const nextFrame = state.selectedFrame + state.stepSize;
-      setTimeout(() => {
-        const v = videoRef.current;
-        if (!v) return;
-        v.currentTime = (nextFrame + 0.5) / fpsNow;
-      }, 0);
+      // Advance through the engine (same path as the toolbar step buttons).
+      // Using engineRef.stepBy keeps the rVFC → setSelectedFrame loop healthy
+      // and avoids races between direct currentTime writes and the engine's
+      // internal lastEmittedFrame tracking.
+      engineRef.current?.stepBy(state.stepSize);
     }
   };
 

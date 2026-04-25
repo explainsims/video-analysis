@@ -89,7 +89,7 @@ export interface ProjectSnapshot {
 
 const DEFAULT_AXES: Axes = { originPx: [0, 0], rotationRad: 0 };
 
-const OBJECT_COLORS = ["#22D3EE", "#FBBF24", "#A78BFA", "#34D399", "#F472B6"];
+const OBJECT_COLORS = ["#2563eb", "#db2777", "#7c3aed", "#16a34a", "#ea580c"];
 
 function newObject(index: number): TrackedObject {
   const letter = String.fromCharCode(65 + index);

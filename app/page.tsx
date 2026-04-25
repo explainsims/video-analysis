@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { ActionRibbon } from "@/components/ActionRibbon";
 import { GraphPane } from "@/components/GraphPane";
 import { TablePane } from "@/components/TablePane";
-import { Toolbar } from "@/components/Toolbar";
+import { TopBar } from "@/components/TopBar";
 import { VideoPane } from "@/components/VideoPane";
 import { effectiveFps, useAnalysisStore } from "@/lib/store";
 import type { VideoEngine } from "@/lib/videoEngine";
@@ -17,7 +18,12 @@ export default function Page() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
         return;
       }
       const eng = engineRef.current;
@@ -45,13 +51,17 @@ export default function Page() {
   };
 
   return (
-    <main className="min-h-screen p-3 lg:p-4 flex flex-col gap-3">
-      <Toolbar engineRef={engineRef} />
-      <div className="flex-1 grid gap-3 grid-cols-1 lg:grid-cols-2 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
-        <div className="lg:row-span-1 min-h-[280px]">
+    <main className="min-h-screen flex flex-col bg-bg">
+      <TopBar />
+      <ActionRibbon />
+      <div
+        className="flex-1 grid gap-4 p-4 grid-cols-1 lg:grid-cols-[1.55fr_1fr]"
+        style={{ gridTemplateRows: "minmax(280px, 1fr) minmax(180px, auto)" }}
+      >
+        <div className="min-h-[280px] min-w-0">
           <VideoPane engineRef={engineRef} fps={fps} />
         </div>
-        <div className="lg:row-span-1 min-h-[280px]">
+        <div className="min-h-[280px] min-w-0">
           <GraphPane onScrub={seekToFrame} />
         </div>
         <div className="lg:col-span-2 min-h-[180px]">
