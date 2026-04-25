@@ -50,10 +50,11 @@ export function TablePane({ onSelect }: { onSelect: (frame: number) => void }) {
   const axes = useAnalysisStore((s) => s.axes);
   const selectedFrame = useAnalysisStore((s) => s.selectedFrame);
 
+  const zeroFirstPoint = useAnalysisStore((s) => s.zeroFirstPoint);
   const active = objects.find((o) => o.id === activeObjectId);
   const rows = useMemo(
-    () => (active ? deriveObject(active, calibration, axes) : []),
-    [active, calibration, axes]
+    () => (active ? deriveObject(active, calibration, axes, { zeroFirstPoint }) : []),
+    [active, calibration, axes, zeroFirstPoint]
   );
 
   const onExport = () => {

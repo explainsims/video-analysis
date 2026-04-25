@@ -36,12 +36,25 @@ export interface AnalysisState {
   // Coordinates
   calibration: Calibration | null;
   axes: Axes;
+  /** True once the user has set the origin (or rotation). Until then, axes
+   *  shouldn't be drawn — the default-centered axes were misleading users
+   *  into thinking they were already configured. */
+  axesSet: boolean;
 
   // Tracking
   objects: TrackedObject[];
   activeObjectId: string;
   stepSize: number;
   fpsOverride: number | null;
+
+  // Display toggles
+  /** Render axes & calibration markers on top of the video. */
+  showOverlays: boolean;
+  /** Treat the first tracked point's t as t=0 (subtracts the offset from
+   *  every row). Useful when tracking starts mid-clip. */
+  zeroFirstPoint: boolean;
+  /** Which pane is full-screen-within-page, if any. */
+  expandedPane: "video" | "graph" | null;
 
   // UI
   mode: Mode;
@@ -55,6 +68,10 @@ export interface AnalysisState {
   setMode: (m: Mode) => void;
   setStepSize: (n: number) => void;
   setFpsOverride: (fps: number | null) => void;
+
+  setShowOverlays: (b: boolean) => void;
+  setZeroFirstPoint: (b: boolean) => void;
+  setExpandedPane: (p: "video" | "graph" | null) => void;
 
   setPendingCalibrationP1: (p: Vec2 | null) => void;
   setCalibration: (c: Calibration | null) => void;
@@ -71,6 +88,7 @@ export interface AnalysisState {
   addPoint: (frame: number, tSec: number, xPx: number, yPx: number) => void;
   removePoint: (objectId: string, frame: number) => void;
   clearPoints: (objectId: string) => void;
+  clearAllPoints: () => void;
 
   loadProject: (snapshot: ProjectSnapshot) => void;
   resetAll: () => void;
@@ -83,7 +101,12 @@ export interface ProjectSnapshot {
   video: VideoMeta & { driveFileId: string | null };
   calibration: Calibration | null;
   axes: Axes;
-  settings: { stepSize: number; fpsOverride: number | null };
+  axesSet?: boolean;
+  settings: {
+    stepSize: number;
+    fpsOverride: number | null;
+    zeroFirstPoint?: boolean;
+  };
   objects: TrackedObject[];
 }
 
@@ -108,10 +131,14 @@ const initial = (): Pick<
   | "selectedFrame"
   | "calibration"
   | "axes"
+  | "axesSet"
   | "objects"
   | "activeObjectId"
   | "stepSize"
   | "fpsOverride"
+  | "showOverlays"
+  | "zeroFirstPoint"
+  | "expandedPane"
   | "mode"
   | "pendingCalibrationP1"
 > => {
@@ -122,10 +149,14 @@ const initial = (): Pick<
     selectedFrame: 0,
     calibration: null,
     axes: DEFAULT_AXES,
+    axesSet: false,
     objects: [first],
     activeObjectId: first.id,
     stepSize: 1,
     fpsOverride: null,
+    showOverlays: true,
+    zeroFirstPoint: false,
+    expandedPane: null,
     mode: "idle",
     pendingCalibrationP1: null,
   };
@@ -139,7 +170,12 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       videoUrl: url,
       video: meta,
       selectedFrame: 0,
+      // Seed axes at the image center so toAxisFrame has a sensible default
+      // even before the user explicitly sets the origin. axesSet stays false
+      // so the canvas overlay knows not to draw anything axis-related yet.
       axes: { originPx: [meta.width / 2, meta.height / 2], rotationRad: 0 },
+      axesSet: false,
+      calibration: null,
     }),
 
   unloadVideo: () => {
@@ -155,11 +191,17 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   setStepSize: (n) => set({ stepSize: Math.max(1, Math.round(n)) }),
   setFpsOverride: (fps) => set({ fpsOverride: fps }),
 
+  setShowOverlays: (b) => set({ showOverlays: b }),
+  setZeroFirstPoint: (b) => set({ zeroFirstPoint: b }),
+  setExpandedPane: (p) => set({ expandedPane: p }),
+
   setPendingCalibrationP1: (p) => set({ pendingCalibrationP1: p }),
   setCalibration: (c) => set({ calibration: c }),
 
-  setOrigin: (p) => set((s) => ({ axes: { ...s.axes, originPx: p } })),
-  setRotation: (rad) => set((s) => ({ axes: { ...s.axes, rotationRad: rad } })),
+  setOrigin: (p) =>
+    set((s) => ({ axes: { ...s.axes, originPx: p }, axesSet: true })),
+  setRotation: (rad) =>
+    set((s) => ({ axes: { ...s.axes, rotationRad: rad }, axesSet: true })),
 
   setActiveObject: (id) => set({ activeObjectId: id }),
   addObject: () =>
@@ -208,12 +250,19 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       ),
     })),
 
+  clearAllPoints: () =>
+    set((s) => ({
+      objects: s.objects.map((o) => ({ ...o, points: [] })),
+    })),
+
   loadProject: (snap) =>
     set((s) => ({
       calibration: snap.calibration,
       axes: snap.axes,
+      axesSet: snap.axesSet ?? true, // older files: axes drawn as before
       stepSize: snap.settings.stepSize,
       fpsOverride: snap.settings.fpsOverride,
+      zeroFirstPoint: snap.settings.zeroFirstPoint ?? false,
       objects: snap.objects.length > 0 ? snap.objects : s.objects,
       activeObjectId: snap.objects[0]?.id ?? s.activeObjectId,
       mode: "idle",

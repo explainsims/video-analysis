@@ -5,14 +5,18 @@ import {
   ChevronRight,
   ChevronsLeft,
   Film,
+  Maximize2,
+  Minimize2,
   Pause,
   Play,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { CanvasOverlay } from "@/components/overlays/CanvasOverlay";
 import { deriveObject } from "@/lib/derived";
 import { loadVideoFile } from "@/lib/loadVideoFile";
+import { showConfirm } from "@/lib/modal";
 import { useAnalysisStore } from "@/lib/store";
 import { VideoEngine } from "@/lib/videoEngine";
 
@@ -25,8 +29,6 @@ export function VideoPane({ engineRef, fps }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [paused, setPaused] = useState(true);
-  const [showTrails, setShowTrails] = useState(true);
-  const [showVectors, setShowVectors] = useState(false);
 
   const videoUrl = useAnalysisStore((s) => s.videoUrl);
   const video = useAnalysisStore((s) => s.video);
@@ -38,6 +40,14 @@ export function VideoPane({ engineRef, fps }: Props) {
   const activeObjectId = useAnalysisStore((s) => s.activeObjectId);
   const calibration = useAnalysisStore((s) => s.calibration);
   const axes = useAnalysisStore((s) => s.axes);
+  const axesSet = useAnalysisStore((s) => s.axesSet);
+  const showOverlays = useAnalysisStore((s) => s.showOverlays);
+  const setShowOverlays = useAnalysisStore((s) => s.setShowOverlays);
+  const zeroFirstPoint = useAnalysisStore((s) => s.zeroFirstPoint);
+  const setZeroFirstPoint = useAnalysisStore((s) => s.setZeroFirstPoint);
+  const expandedPane = useAnalysisStore((s) => s.expandedPane);
+  const setExpandedPane = useAnalysisStore((s) => s.setExpandedPane);
+  const clearPoints = useAnalysisStore((s) => s.clearPoints);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -50,7 +60,6 @@ export function VideoPane({ engineRef, fps }: Props) {
       eng.destroy();
       engineRef.current = null;
     };
-    // intentionally not depending on `fps`: setFps is handled via the next effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoUrl, engineRef, setSelectedFrame]);
 
@@ -80,9 +89,11 @@ export function VideoPane({ engineRef, fps }: Props) {
     setPaused(eng.isPaused());
   };
 
-  // Live telemetry for the active object at the current frame
   const active = objects.find((o) => o.id === activeObjectId);
-  const derived = active && calibration ? deriveObject(active, calibration, axes) : [];
+  const derived =
+    active && calibration
+      ? deriveObject(active, calibration, axes, { zeroFirstPoint })
+      : [];
   const cur = derived.find((d) => d.frame === selectedFrame);
 
   const sizeLabel =
@@ -90,20 +101,72 @@ export function VideoPane({ engineRef, fps }: Props) {
       ? `${video.width}×${video.height} · ${video.durationSec.toFixed(1)}s`
       : null;
 
+  const overlaysToggleEnabled = axesSet || calibration != null;
+  const isExpanded = expandedPane === "video";
+
+  const onClearActive = async () => {
+    if (!active || active.points.length === 0) return;
+    const ok = await showConfirm({
+      title: `Clear all points for ${active.name}?`,
+      body: `This will remove ${active.points.length} tracked ${
+        active.points.length === 1 ? "point" : "points"
+      }. The video and calibration are kept.`,
+      confirmLabel: "Clear points",
+      danger: true,
+    });
+    if (ok) clearPoints(active.id);
+  };
+
   return (
     <div className="card h-full">
       {/* Header */}
       <div className="card-header">
         <span
-          style={{ width: 8, height: 8, borderRadius: 4, background: video ? "#16a34a" : "rgb(var(--color-muted))" }}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            background: video ? "#16a34a" : "rgb(var(--color-muted))",
+          }}
         />
         <span>Video tracker</span>
-        {sizeLabel && (
-          <span className="pill ml-1">{sizeLabel}</span>
-        )}
+        {sizeLabel && <span className="pill ml-1">{sizeLabel}</span>}
         <div className="flex-1" />
-        <Toggle label="Trails" on={showTrails} onChange={setShowTrails} />
-        <Toggle label="Vectors" on={showVectors} onChange={setShowVectors} />
+        <Toggle
+          label="Show axes & calibration"
+          on={showOverlays}
+          onChange={setShowOverlays}
+          disabled={!overlaysToggleEnabled}
+          title={
+            overlaysToggleEnabled
+              ? "Hide or show the calibration line and the coordinate axes."
+              : "Set the origin or calibrate first to enable this toggle."
+          }
+        />
+        <Toggle
+          label="Zero first point time"
+          on={zeroFirstPoint}
+          onChange={setZeroFirstPoint}
+          title="When on, the first tracked point is taken as t = 0 and the same offset is subtracted from every other point. Off keeps actual video time."
+        />
+        {video && active && active.points.length > 0 && (
+          <button
+            onClick={onClearActive}
+            className="btn-soft"
+            style={{ padding: "5px 10px", fontSize: 11 }}
+            title="Remove all tracked points for this object (keeps the video)"
+          >
+            <Trash2 size={12} /> Clear points
+          </button>
+        )}
+        <button
+          onClick={() => setExpandedPane(isExpanded ? null : "video")}
+          className="btn-soft"
+          style={{ padding: "5px 8px", fontSize: 11 }}
+          title={isExpanded ? "Restore split layout" : "Expand to fill window"}
+        >
+          {isExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+        </button>
       </div>
 
       {/* Video area */}
@@ -149,12 +212,7 @@ export function VideoPane({ engineRef, fps }: Props) {
               muted
               controls={false}
             />
-            <CanvasOverlay
-              videoRef={videoRef}
-              engineRef={engineRef}
-              showTrails={showTrails}
-              showVectors={showVectors}
-            />
+            <CanvasOverlay videoRef={videoRef} engineRef={engineRef} />
 
             {cur && (
               <div className="absolute top-3 right-3 flex flex-col gap-1.5 pointer-events-none">
@@ -193,7 +251,7 @@ export function VideoPane({ engineRef, fps }: Props) {
                   color: "#fff",
                 }}
               >
-                Click on the object to add a point
+                Click to add · right-click a point to delete it
               </div>
             )}
           </>
@@ -259,18 +317,33 @@ function Toggle({
   label,
   on,
   onChange,
+  disabled = false,
+  title,
 }: {
   label: string;
   on: boolean;
   onChange: (next: boolean) => void;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
-      onClick={() => onChange(!on)}
+      onClick={() => !disabled && onChange(!on)}
+      disabled={disabled}
+      title={title}
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition"
       style={{
-        background: on ? "rgb(var(--color-brand) / 0.10)" : "rgb(var(--color-border) / 0.06)",
-        color: on ? "rgb(var(--color-brand))" : "rgb(var(--color-muted))",
+        background: disabled
+          ? "rgb(var(--color-border) / 0.04)"
+          : on
+          ? "rgb(var(--color-brand) / 0.10)"
+          : "rgb(var(--color-border) / 0.06)",
+        color: disabled
+          ? "rgb(var(--color-muted) / 0.5)"
+          : on
+          ? "rgb(var(--color-brand))"
+          : "rgb(var(--color-muted))",
+        cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
       <span
@@ -278,7 +351,11 @@ function Toggle({
           width: 22,
           height: 12,
           borderRadius: 999,
-          background: on ? "rgb(var(--color-brand))" : "rgb(var(--color-border) / 0.30)",
+          background: disabled
+            ? "rgb(var(--color-border) / 0.20)"
+            : on
+            ? "rgb(var(--color-brand))"
+            : "rgb(var(--color-border) / 0.30)",
           position: "relative",
           flexShrink: 0,
           transition: "background 0.15s",

@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { metersPerPixel, type Vec2 } from "@/lib/math";
+import { type Vec2 } from "@/lib/math";
 import { pointerToImageCoords } from "@/lib/input";
-import { deriveObject } from "@/lib/derived";
-import { showPrompt } from "@/lib/modal";
+import { showConfirm, showPrompt } from "@/lib/modal";
 import { effectiveFps, useAnalysisStore } from "@/lib/store";
 import type { VideoEngine } from "@/lib/videoEngine";
 
 interface Props {
   videoRef: RefObject<HTMLVideoElement | null>;
   engineRef: RefObject<VideoEngine | null>;
-  showTrails?: boolean;
-  showVectors?: boolean;
 }
+
+const POINT_HIT_RADIUS_PX = 10;
 
 const ROTATION_HANDLE_PX = 96;
 const HANDLE_RADIUS_PX = 12;
@@ -36,12 +35,7 @@ function axisDirs(theta: number): { xDir: Vec2; yDir: Vec2 } {
   return { xDir: [c, -s], yDir: [-s, -c] };
 }
 
-export function CanvasOverlay({
-  videoRef,
-  engineRef,
-  showTrails = true,
-  showVectors = false,
-}: Props) {
+export function CanvasOverlay({ videoRef, engineRef }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const draggingRotationRef = useRef(false);
   // Live cursor position (in image coords) for the calibrate preview line.
@@ -50,6 +44,8 @@ export function CanvasOverlay({
   const video = useAnalysisStore((s) => s.video);
   const calibration = useAnalysisStore((s) => s.calibration);
   const axes = useAnalysisStore((s) => s.axes);
+  const axesSet = useAnalysisStore((s) => s.axesSet);
+  const showOverlays = useAnalysisStore((s) => s.showOverlays);
   const objects = useAnalysisStore((s) => s.objects);
   const activeObjectId = useAnalysisStore((s) => s.activeObjectId);
   const selectedFrame = useAnalysisStore((s) => s.selectedFrame);
@@ -104,7 +100,9 @@ export function CanvasOverlay({
     const toCss = (p: Vec2): Vec2 => [p[0] * sx, p[1] * sy];
 
     // --- Calibration line (committed) ---
-    if (calibration && mode !== "calibrate") {
+    // Skipped while drawing a new calibration, and skipped entirely when
+    // the user has hidden overlays.
+    if (calibration && mode !== "calibrate" && showOverlays) {
       const a = toCss(calibration.p1);
       const b = toCss(calibration.p2);
       drawAlternatingDashedLine(ctx, a, b);
@@ -130,9 +128,11 @@ export function CanvasOverlay({
       drawBracket(ctx, a, cursor ?? [a[0] + 1, a[1]], "start");
     }
 
-    // --- Axes (rigid 90° pair) — hidden during calibrate so it doesn't
-    //     fight the calibration UI for attention. ---
-    if (mode !== "calibrate") {
+    // --- Axes (rigid 90° pair) ---
+    // Hidden until the user explicitly sets the origin (axesSet), hidden
+    // during calibrate so it doesn't fight that tool for attention, and
+    // hidden when the user has toggled overlays off.
+    if (axesSet && mode !== "calibrate" && showOverlays) {
       const o = toCss(axes.originPx);
       const { xDir, yDir } = axisDirs(axes.rotationRad);
       const xEnd: Vec2 = [o[0] + AXIS_DRAW_LEN_PX * xDir[0], o[1] + AXIS_DRAW_LEN_PX * xDir[1]];
@@ -184,12 +184,12 @@ export function CanvasOverlay({
       ctx.textBaseline = "alphabetic";
     }
 
-    // --- Tracked points ---
+    // --- Tracked points (with connecting trails) ---
     for (const obj of objects) {
       ctx.fillStyle = obj.color;
       ctx.strokeStyle = obj.color;
       ctx.lineWidth = 1.5;
-      if (showTrails && obj.points.length > 1) {
+      if (obj.points.length > 1) {
         ctx.globalAlpha = 0.45;
         ctx.beginPath();
         const first = toCss([obj.points[0].xPx, obj.points[0].yPx]);
@@ -211,39 +211,6 @@ export function CanvasOverlay({
           ctx.beginPath();
           ctx.arc(p[0], p[1], 10, 0, Math.PI * 2);
           ctx.stroke();
-        }
-      }
-    }
-
-    // --- Velocity vector overlay (active object, current frame) ---
-    if (showVectors && calibration) {
-      const obj = objects.find((o) => o.id === activeObjectId);
-      const cur = obj?.points.find((p) => p.frame === selectedFrame);
-      if (obj && cur) {
-        const derived = deriveObject(obj, calibration, axes);
-        const d = derived.find((r) => r.frame === selectedFrame);
-        if (d) {
-          // Convert physics-frame velocity (m/s) into image-pixel direction.
-          // The same axisDirs mapping (physics → image) applies to vectors:
-          //   image_dx = vx * xDir + vy * yDir.
-          const { xDir, yDir } = axisDirs(axes.rotationRad);
-          const mPerPx = metersPerPixel(calibration);
-          // Length of the velocity vector in image pixels per second.
-          const ARROW_SECONDS = 0.5; // arrow length = how far the object travels in 0.5 s
-          const lenScale = ARROW_SECONDS / mPerPx;
-          const ivx = (d.vx * xDir[0] + d.vy * yDir[0]) * lenScale;
-          const ivy = (d.vx * xDir[1] + d.vy * yDir[1]) * lenScale;
-          const tail = toCss([cur.xPx, cur.yPx]);
-          const tip: Vec2 = [tail[0] + ivx * sx, tail[1] + ivy * sy];
-          if (Math.hypot(tip[0] - tail[0], tip[1] - tail[1]) > 4) {
-            ctx.strokeStyle = obj.color;
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            ctx.moveTo(tail[0], tail[1]);
-            ctx.lineTo(tip[0], tip[1]);
-            ctx.stroke();
-            drawArrowHead(ctx, tail, tip, obj.color);
-          }
         }
       }
     }
@@ -347,7 +314,7 @@ export function CanvasOverlay({
     }
     void sx;
     void sy;
-  }, [video, calibration, axes, objects, activeObjectId, selectedFrame, mode, pendingP1, calibrateHover, showTrails, showVectors]);
+  }, [video, calibration, axes, axesSet, showOverlays, objects, activeObjectId, selectedFrame, mode, pendingP1, calibrateHover]);
 
   // Hit-test the rotation handle in CSS coords against the current canvas.
   const isOnRotationHandle = (cssX: number, cssY: number): boolean => {
@@ -372,6 +339,52 @@ export function CanvasOverlay({
     const dy = iy - state.axes.originPx[1];
     // Physics convention: y-up, so flip image-y. θ = atan2(dy_phys, dx).
     state.setRotation(Math.atan2(-dy, dx));
+  };
+
+  /** Find the (objectId, frame) of the tracked point closest to the given
+   *  CSS-space coordinate, within hit radius. Returns null if no hit. */
+  const hitTestPoint = (cssX: number, cssY: number) => {
+    const v = video;
+    const canvas = canvasRef.current;
+    if (!v || !canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const sx = rect.width / v.width;
+    const sy = rect.height / v.height;
+    let best: { objectId: string; frame: number; dist: number } | null = null;
+    for (const obj of objects) {
+      for (const pt of obj.points) {
+        const px = pt.xPx * sx;
+        const py = pt.yPx * sy;
+        const dist = Math.hypot(cssX - px, cssY - py);
+        if (dist <= POINT_HIT_RADIUS_PX && (!best || dist < best.dist)) {
+          best = { objectId: obj.id, frame: pt.frame, dist };
+        }
+      }
+    }
+    return best;
+  };
+
+  // Right-click → delete a tracked point (with confirm).
+  const onContextMenu = (e: React.MouseEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !video) return;
+    const rect = canvas.getBoundingClientRect();
+    const cssX = e.clientX - rect.left;
+    const cssY = e.clientY - rect.top;
+    const hit = hitTestPoint(cssX, cssY);
+    if (!hit) return; // let the browser keep its native menu off-target
+    e.preventDefault();
+    const state = useAnalysisStore.getState();
+    const obj = state.objects.find((o) => o.id === hit.objectId);
+    void (async () => {
+      const ok = await showConfirm({
+        title: "Delete this tracked point?",
+        body: `${obj?.name ?? "Object"} · frame ${hit.frame}`,
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (ok) useAnalysisStore.getState().removePoint(hit.objectId, hit.frame);
+    })();
   };
 
   // ---- Pointer interaction ----
@@ -502,6 +515,7 @@ export function CanvasOverlay({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onContextMenu={onContextMenu}
     />
   );
 }
