@@ -465,7 +465,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
               : "Linear fit over all tracked points"
           }
         >
-          <TrendingUp size={12} /> Line of best fit
+          <TrendingUp size={12} /> Linear fit
         </button>
         <button
           className="btn-soft"
@@ -478,7 +478,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
               : "Quadratic fit over all tracked points"
           }
         >
-          <FunctionSquare size={12} /> Curve fit (quadratic)
+          <FunctionSquare size={12} /> Quadratic fit
         </button>
         {(selRange || fit) && (
           <button
@@ -508,7 +508,11 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
         ) : data.length < 1 ? (
           <div className="p-4 text-sm text-muted">Add tracked points to plot.</div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            key={expandedPane ?? "split"}
+            width="100%"
+            height="100%"
+          >
             <ComposedChart
               data={merged}
               margin={{ top: 16, right: 24, left: 24, bottom: 36 }}
