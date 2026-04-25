@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { type Vec2 } from "@/lib/math";
 import { pointerToImageCoords } from "@/lib/input";
-import { showConfirm, showPrompt } from "@/lib/modal";
+import { showPrompt } from "@/lib/modal";
 import { effectiveFps, useAnalysisStore } from "@/lib/store";
 import type { VideoEngine } from "@/lib/videoEngine";
 
@@ -51,6 +51,7 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
   const selectedFrame = useAnalysisStore((s) => s.selectedFrame);
   const mode = useAnalysisStore((s) => s.mode);
   const pendingP1 = useAnalysisStore((s) => s.pendingCalibrationP1);
+  const selectedPoint = useAnalysisStore((s) => s.selectedPoint);
 
   // Clear the hover preview whenever we leave calibrate mode or commit p1.
   useEffect(() => {
@@ -184,30 +185,30 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
       ctx.textBaseline = "alphabetic";
     }
 
-    // --- Tracked points (with connecting trails) ---
+    // --- Tracked points (rendered as discrete dots — no connecting line) ---
     for (const obj of objects) {
-      ctx.fillStyle = obj.color;
-      ctx.strokeStyle = obj.color;
-      ctx.lineWidth = 1.5;
-      if (obj.points.length > 1) {
-        ctx.globalAlpha = 0.45;
-        ctx.beginPath();
-        const first = toCss([obj.points[0].xPx, obj.points[0].yPx]);
-        ctx.moveTo(first[0], first[1]);
-        for (let i = 1; i < obj.points.length; i++) {
-          const p = toCss([obj.points[i].xPx, obj.points[i].yPx]);
-          ctx.lineTo(p[0], p[1]);
-        }
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
       for (const pt of obj.points) {
         const p = toCss([pt.xPx, pt.yPx]);
         const isCurrent = pt.frame === selectedFrame;
+        const isSelectedForDelete =
+          selectedPoint != null &&
+          selectedPoint.objectId === obj.id &&
+          selectedPoint.frame === pt.frame;
+        // While in delete mode, the selected point recolors red and gets
+        // a thick ring so the user has clear feedback before pressing Delete.
+        const fill = isSelectedForDelete ? "#dc2626" : obj.color;
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = fill;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(p[0], p[1], isCurrent ? 6 : 3, 0, Math.PI * 2);
+        ctx.arc(p[0], p[1], isSelectedForDelete ? 7 : isCurrent ? 6 : 3, 0, Math.PI * 2);
         ctx.fill();
-        if (isCurrent && obj.id === activeObjectId) {
+        if (isSelectedForDelete) {
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(p[0], p[1], 13, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (isCurrent && obj.id === activeObjectId) {
           ctx.beginPath();
           ctx.arc(p[0], p[1], 10, 0, Math.PI * 2);
           ctx.stroke();
@@ -314,7 +315,7 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
     }
     void sx;
     void sy;
-  }, [video, calibration, axes, axesSet, showOverlays, objects, activeObjectId, selectedFrame, mode, pendingP1, calibrateHover]);
+  }, [video, calibration, axes, axesSet, showOverlays, objects, activeObjectId, selectedFrame, mode, pendingP1, calibrateHover, selectedPoint]);
 
   // Hit-test the rotation handle in CSS coords against the current canvas.
   const isOnRotationHandle = (cssX: number, cssY: number): boolean => {
@@ -364,28 +365,6 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
     return best;
   };
 
-  // Right-click → delete a tracked point (with confirm).
-  const onContextMenu = (e: React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !video) return;
-    const rect = canvas.getBoundingClientRect();
-    const cssX = e.clientX - rect.left;
-    const cssY = e.clientY - rect.top;
-    const hit = hitTestPoint(cssX, cssY);
-    if (!hit) return; // let the browser keep its native menu off-target
-    e.preventDefault();
-    const state = useAnalysisStore.getState();
-    const obj = state.objects.find((o) => o.id === hit.objectId);
-    void (async () => {
-      const ok = await showConfirm({
-        title: "Delete this tracked point?",
-        body: `${obj?.name ?? "Object"} · frame ${hit.frame}`,
-        confirmLabel: "Delete",
-        danger: true,
-      });
-      if (ok) useAnalysisStore.getState().removePoint(hit.objectId, hit.frame);
-    })();
-  };
 
   // ---- Pointer interaction ----
   const onPointerDown = (e: React.PointerEvent) => {
@@ -457,6 +436,13 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
       return;
     }
 
+    if (state.mode === "delete") {
+      const hit = hitTestPoint(cssX, cssY);
+      // Hit a point → select it. Miss → clear any current selection.
+      state.setSelectedPoint(hit ? { objectId: hit.objectId, frame: hit.frame } : null);
+      return;
+    }
+
     if (state.mode === "track" && state.calibration) {
       const fpsNow = effectiveFps(state);
       const eng = engineRef.current;
@@ -515,7 +501,6 @@ export function CanvasOverlay({ videoRef, engineRef }: Props) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      onContextMenu={onContextMenu}
     />
   );
 }

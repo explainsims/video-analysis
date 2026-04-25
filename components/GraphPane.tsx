@@ -1,7 +1,14 @@
 "use client";
 
-import { Eraser, FunctionSquare, Maximize2, Minimize2, TrendingUp } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  Eraser,
+  FunctionSquare,
+  ImageDown,
+  Maximize2,
+  Minimize2,
+  TrendingUp,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
   ComposedChart,
@@ -16,7 +23,9 @@ import {
   YAxis,
 } from "recharts";
 import { deriveObject, type DerivedRow } from "@/lib/derived";
+import { exportSvgAsA4Png } from "@/lib/exportGraphPng";
 import { linearFit, quadraticFit } from "@/lib/math";
+import { showAlert } from "@/lib/modal";
 import { useAnalysisStore } from "@/lib/store";
 
 type GraphMode = "xt" | "yt" | "vxt" | "vyt";
@@ -24,12 +33,13 @@ type FitKind = "linear" | "quadratic";
 
 interface ModeDef {
   id: GraphMode;
-  /** Plain-text label for tooltips / footer (no Unicode subscripts). */
+  /** Plain-text label (no markup). Used for filenames & tooltips. */
   shortLabel: string;
-  /** Rich React label for the mode pill, with real subscripts. */
+  /** Rich React label with real subscripts and dash separator. */
   pillLabel: React.ReactNode;
-  /** Y-axis label, also rich. */
-  yAxisLabel: React.ReactNode;
+  /** Y-axis label (used in Recharts; falls back to plain text — Recharts can't
+   *  render React JSX inside SVG). */
+  yLabelPlain: string;
   /** Y-axis units, plain text. */
   yUnit: string;
   /** Build chart rows from derived data. */
@@ -42,52 +52,59 @@ interface ChartRow {
   v: number;
 }
 
+// Subscripts in pill / footer labels: a small, baseline-aligned <sub> that
+// stays readable. Plain text fallback (e.g. for filename) lives in shortLabel.
+const Subscript = ({ children }: { children: React.ReactNode }) => (
+  <sub
+    style={{
+      fontSize: "0.78em",
+      lineHeight: 1,
+      verticalAlign: "-0.18em",
+      marginLeft: "0.02em",
+    }}
+  >
+    {children}
+  </sub>
+);
+
 const MODES: ModeDef[] = [
   {
     id: "xt",
-    shortLabel: "x vs t",
-    pillLabel: <>x vs t</>,
-    yAxisLabel: <>x (m)</>,
+    shortLabel: "x-t",
+    pillLabel: <>x – t</>,
+    yLabelPlain: "x (m)",
     yUnit: "m",
     build: (rows) => rows.map((r) => ({ t: r.t, frame: r.frame, v: r.x })),
   },
   {
     id: "yt",
-    shortLabel: "y vs t",
-    pillLabel: <>y vs t</>,
-    yAxisLabel: <>y (m)</>,
+    shortLabel: "y-t",
+    pillLabel: <>y – t</>,
+    yLabelPlain: "y (m)",
     yUnit: "m",
     build: (rows) => rows.map((r) => ({ t: r.t, frame: r.frame, v: r.y })),
   },
   {
     id: "vxt",
-    shortLabel: "vx vs t",
+    shortLabel: "vx-t",
     pillLabel: (
       <>
-        v<sub>x</sub> vs t
+        v<Subscript>x</Subscript> – t
       </>
     ),
-    yAxisLabel: (
-      <>
-        v<sub>x</sub> (m/s)
-      </>
-    ),
+    yLabelPlain: "vₓ (m/s)",
     yUnit: "m/s",
     build: (rows) => rows.map((r) => ({ t: r.t, frame: r.frame, v: r.vx })),
   },
   {
     id: "vyt",
-    shortLabel: "vy vs t",
+    shortLabel: "vy-t",
     pillLabel: (
       <>
-        v<sub>y</sub> vs t
+        v<Subscript>y</Subscript> – t
       </>
     ),
-    yAxisLabel: (
-      <>
-        v<sub>y</sub> (m/s)
-      </>
-    ),
+    yLabelPlain: "vᵧ (m/s)",
     yUnit: "m/s",
     build: (rows) => rows.map((r) => ({ t: r.t, frame: r.frame, v: r.vy })),
   },
@@ -99,6 +116,8 @@ interface FitState {
   fn: (x: number) => number;
   equation: string;
   r2: number;
+  /** True when the fit was applied to all data (no horizontal range was selected). */
+  isFullData: boolean;
 }
 
 interface ChartMouseEvent {
@@ -118,10 +137,6 @@ const fmtSig = (n: number, digits = 4): string => {
   return n.toExponential(digits - 1);
 };
 
-/**
- * Generate ~tickCount evenly-spaced "nice" tick values across [min, max].
- * Picks a step that's a multiple of 1/2/5 × 10^k so labels are readable.
- */
 function niceTicks(min: number, max: number, tickCount = 6): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
     return [min];
@@ -138,7 +153,7 @@ function niceTicks(min: number, max: number, tickCount = 6): number[] {
   const start = Math.ceil(min / step) * step;
   const out: number[] = [];
   for (let v = start; v <= max + step * 1e-9; v += step) {
-    out.push(Number(v.toFixed(12))); // prevent FP drift
+    out.push(Number(v.toFixed(12)));
   }
   return out;
 }
@@ -152,7 +167,10 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
   const zeroFirstPoint = useAnalysisStore((s) => s.zeroFirstPoint);
   const expandedPane = useAnalysisStore((s) => s.expandedPane);
   const setExpandedPane = useAnalysisStore((s) => s.setExpandedPane);
+  const projectName = useAnalysisStore((s) => s.projectName);
   const [graphMode, setGraphMode] = useState<GraphMode>("xt");
+
+  const chartHostRef = useRef<HTMLDivElement>(null);
 
   const [selStart, setSelStart] = useState<number | null>(null);
   const [selEnd, setSelEnd] = useState<number | null>(null);
@@ -170,13 +188,47 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
   const def = MODES.find((m) => m.id === graphMode)!;
   const data = useMemo(() => def.build(derived), [def, derived]);
 
-  // Reset fit/selection on mode/object change.
+  // Reset selection/fit when mode/object/zero changes.
   useEffect(() => {
     setFit(null);
     setSelStart(null);
     setSelEnd(null);
     setDragging(false);
   }, [graphMode, activeObjectId, zeroFirstPoint]);
+
+  // Auto-update the fit if it's "all data" and the data changes.
+  useEffect(() => {
+    if (!fit || !fit.isFullData) return;
+    if (data.length < (fit.kind === "quadratic" ? 3 : 2)) {
+      setFit(null);
+      return;
+    }
+    const xs = data.map((d) => d.t);
+    const ys = data.map((d) => d.v);
+    const range: [number, number] = [xs[0], xs[xs.length - 1]];
+    if (fit.kind === "linear") {
+      const lf = linearFit(xs, ys);
+      setFit({
+        kind: "linear",
+        range,
+        fn: (x) => lf.m * x + lf.b,
+        equation: `y = ${fmtSig(lf.m)} t + ${fmtSig(lf.b)}`,
+        r2: lf.r2,
+        isFullData: true,
+      });
+    } else {
+      const qf = quadraticFit(xs, ys);
+      setFit({
+        kind: "quadratic",
+        range,
+        fn: (x) => qf.A * x * x + qf.B * x + qf.C,
+        equation: `y = ${fmtSig(qf.A)} t² + ${fmtSig(qf.B)} t + ${fmtSig(qf.C)}`,
+        r2: qf.r2,
+        isFullData: true,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const cursor = data.find((d) => d.frame === selectedFrame);
 
@@ -185,7 +237,6 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
       ? [Math.min(selStart, selEnd), Math.max(selStart, selEnd)]
       : null;
 
-  // Domain & ticks (consistent, evenly-spaced) derived from data range.
   const tDomain = useMemo<[number, number]>(() => {
     if (data.length === 0) return [0, 1];
     const min = data[0].t;
@@ -260,36 +311,58 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
     setFit(null);
   };
 
+  /** Apply a fit to either the selected range or, if no selection exists, all
+   *  data points. The "isFullData" flag lets the fit keep updating as new
+   *  points are tracked. */
   const applyFit = (kind: FitKind) => {
-    if (!selRange) return;
-    const [t0, t1] = selRange;
-    const inRange = data.filter((d) => d.t >= t0 && d.t <= t1);
-    if (kind === "linear" && inRange.length < 2) return;
-    if (kind === "quadratic" && inRange.length < 3) return;
+    const minPts = kind === "quadratic" ? 3 : 2;
+    let inRange: ChartRow[];
+    let isFullData: boolean;
+    let range: [number, number];
+    if (selRange) {
+      const [t0, t1] = selRange;
+      inRange = data.filter((d) => d.t >= t0 && d.t <= t1);
+      isFullData = false;
+      range = selRange;
+    } else {
+      inRange = data;
+      isFullData = true;
+      range = data.length > 0 ? [data[0].t, data[data.length - 1].t] : [0, 1];
+    }
+    if (inRange.length < minPts) {
+      void showAlert(
+        kind === "linear" ? "Need at least 2 points" : "Need at least 3 points",
+        kind === "linear"
+          ? "Track 2 or more points before fitting a line."
+          : "Track 3 or more points before fitting a quadratic."
+      );
+      return;
+    }
     const xs = inRange.map((d) => d.t);
     const ys = inRange.map((d) => d.v);
     if (kind === "linear") {
       const lf = linearFit(xs, ys);
       setFit({
         kind,
-        range: selRange,
+        range,
         fn: (x) => lf.m * x + lf.b,
         equation: `y = ${fmtSig(lf.m)} t + ${fmtSig(lf.b)}`,
         r2: lf.r2,
+        isFullData,
       });
     } else {
       const qf = quadraticFit(xs, ys);
       setFit({
         kind,
-        range: selRange,
+        range,
         fn: (x) => qf.A * x * x + qf.B * x + qf.C,
         equation: `y = ${fmtSig(qf.A)} t² + ${fmtSig(qf.B)} t + ${fmtSig(qf.C)}`,
         r2: qf.r2,
+        isFullData,
       });
     }
   };
 
-  // Dense fit-curve points across selected x-range
   const fitData = useMemo(() => {
     if (!fit) return [];
     const [a, b] = fit.range;
@@ -314,10 +387,31 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
     return Array.from(map.values()).sort((a, b) => a.t - b.t);
   }, [data, fitData]);
 
-  const rangeCount = (range: [number, number]) =>
-    data.filter((d) => d.t >= range[0] && d.t <= range[1]).length;
-  const canFitLinear = !!selRange && rangeCount(selRange) >= 2;
-  const canFitQuad = !!selRange && rangeCount(selRange) >= 3;
+  // Fits are available as soon as there are enough points overall; the buttons
+  // operate on the selected range when one exists, otherwise on all data.
+  const canFitLinear = data.length >= 2;
+  const canFitQuad = data.length >= 3;
+
+  const onExportPng = async () => {
+    const host = chartHostRef.current;
+    const svg = host?.querySelector("svg");
+    if (!svg) {
+      void showAlert(
+        "Nothing to export yet",
+        "Add tracked points so the graph has data to render."
+      );
+      return;
+    }
+    const subtitle = fit
+      ? `${def.shortLabel} · ${fit.equation} · R² = ${fit.r2.toFixed(4)}`
+      : `${def.shortLabel} · ${data.length} points · ${active?.name ?? ""}`;
+    const safe = (projectName || "graph").trim().replace(/[^\w.\- ]+/g, "_");
+    await exportSvgAsA4Png(svg as SVGSVGElement, {
+      title: `${projectName || "Untitled project"} — ${def.shortLabel}`,
+      subtitle,
+      filename: `${safe}_${def.shortLabel}.png`,
+    });
+  };
 
   const isExpanded = expandedPane === "graph";
 
@@ -332,15 +426,24 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
             onClick={() => setGraphMode(m.id)}
             data-active={graphMode === m.id}
             className="btn-soft"
-            style={{ padding: "6px 12px", fontSize: 13 }}
+            style={{ padding: "6px 14px", fontSize: 14 }}
           >
             {m.pillLabel}
           </button>
         ))}
         <button
+          onClick={onExportPng}
+          className="btn-soft"
+          style={{ padding: "5px 10px", fontSize: 11, marginLeft: 4 }}
+          title="Export as a landscape A4 PNG (light background, regardless of theme)"
+          disabled={data.length === 0}
+        >
+          <ImageDown size={13} /> PNG
+        </button>
+        <button
           onClick={() => setExpandedPane(isExpanded ? null : "graph")}
           className="btn-soft"
-          style={{ padding: "5px 8px", fontSize: 11, marginLeft: 4 }}
+          style={{ padding: "5px 8px", fontSize: 11 }}
           title={isExpanded ? "Restore split layout" : "Expand to fill window"}
         >
           {isExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
@@ -356,7 +459,11 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
           style={{ padding: "4px 10px", fontSize: 11 }}
           onClick={() => applyFit("linear")}
           disabled={!canFitLinear}
-          title="Drag a horizontal range on the chart, then apply a linear fit"
+          title={
+            selRange
+              ? "Linear fit over the selected range"
+              : "Linear fit over all tracked points"
+          }
         >
           <TrendingUp size={12} /> Line of best fit
         </button>
@@ -365,6 +472,11 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
           style={{ padding: "4px 10px", fontSize: 11 }}
           onClick={() => applyFit("quadratic")}
           disabled={!canFitQuad}
+          title={
+            selRange
+              ? "Quadratic fit over the selected range"
+              : "Quadratic fit over all tracked points"
+          }
         >
           <FunctionSquare size={12} /> Curve fit (quadratic)
         </button>
@@ -386,7 +498,11 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
         )}
       </div>
 
-      <div className="flex-1 px-2 py-1 relative" style={{ minHeight: 0 }}>
+      <div
+        ref={chartHostRef}
+        className="flex-1 px-2 py-1 relative"
+        style={{ minHeight: 0 }}
+      >
         {!calibration ? (
           <div className="p-4 text-sm text-muted">Calibrate the scale to plot data.</div>
         ) : data.length < 1 ? (
@@ -434,7 +550,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
                 tickMargin={6}
                 width={64}
                 label={{
-                  value: def.shortLabel.split(" vs ")[0] + ` (${def.yUnit})`,
+                  value: def.yLabelPlain,
                   angle: -90,
                   position: "insideLeft",
                   offset: 0,
@@ -505,7 +621,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
               background: objColor,
             }}
           />
-          {def.yAxisLabel}
+          {def.pillLabel}
         </span>
         <div className="flex-1" />
         {fit ? (
@@ -513,7 +629,9 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
             <span style={{ color: "rgb(var(--color-accent))" }}>{fit.equation}</span>
             <span className="text-muted">R² = {fit.r2.toFixed(4)}</span>
             <span className="text-muted">
-              t ∈ [{fit.range[0].toFixed(2)}, {fit.range[1].toFixed(2)}]
+              {fit.isFullData
+                ? `all ${data.length} pts`
+                : `t ∈ [${fit.range[0].toFixed(2)}, ${fit.range[1].toFixed(2)}]`}
             </span>
           </div>
         ) : selRange ? (
@@ -523,7 +641,7 @@ export function GraphPane({ onScrub }: { onScrub: (frame: number) => void }) {
           </span>
         ) : (
           <span className="text-[11px] text-muted">
-            Drag a horizontal range to enable fitting.
+            Drag a horizontal range, or apply a fit to all points.
           </span>
         )}
       </div>
