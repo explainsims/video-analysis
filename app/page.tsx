@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { ActionRibbon } from "@/components/ActionRibbon";
 import { GraphPane } from "@/components/GraphPane";
+import { Modals } from "@/components/Modals";
 import { TablePane } from "@/components/TablePane";
 import { TopBar } from "@/components/TopBar";
 import { VideoPane } from "@/components/VideoPane";
@@ -68,6 +69,7 @@ export default function Page() {
           <TablePane onSelect={seekToFrame} />
         </div>
       </div>
+      <Modals />
     </main>
   );
 }

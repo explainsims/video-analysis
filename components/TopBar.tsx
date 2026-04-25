@@ -2,6 +2,7 @@
 
 import { Download, FileSpreadsheet, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { showAlert } from "@/lib/modal";
 import { downloadProject, exportProject } from "@/lib/projectFile";
 import { useAnalysisStore } from "@/lib/store";
 
@@ -32,8 +33,9 @@ export function TopBar() {
   };
 
   const onExportSheets = () => {
-    alert(
-      "Export to Sheets is coming in a follow-up release (Google Drive OAuth + Sheets API)."
+    void showAlert(
+      "Export to Sheets — coming soon",
+      "One-click Google Sheets export lands once Drive OAuth ships."
     );
   };
 

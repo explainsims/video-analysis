@@ -3,7 +3,8 @@
 import { Aperture, Crosshair, Plus, Ruler, Target, Upload } from "lucide-react";
 import { useRef } from "react";
 import { loadVideoFile } from "@/lib/loadVideoFile";
-import { readProjectFile } from "@/lib/projectFile";
+import { showAlert, showModal, showPrompt } from "@/lib/modal";
+import { downloadProject, exportProject, readProjectFile } from "@/lib/projectFile";
 import { effectiveFps, useAnalysisStore, type Mode } from "@/lib/store";
 
 const STEP_OPTIONS = [1, 2, 5];
@@ -21,16 +22,25 @@ interface ToolDef {
 }
 
 const TOOLS: ToolDef[] = [
-  { id: "import", label: "Import video", Icon: Upload, cssColorVar: "--color-brand", hex: "#2563eb" },
+  { id: "import", label: "New video", Icon: Upload, cssColorVar: "--color-brand", hex: "#2563eb" },
   { id: "calibrate", label: "Calibrate", Icon: Ruler, cssColorVar: "--color-tool-cal", hex: "#0891b2", mode: "calibrate" },
   { id: "setOrigin", label: "Set origin", Icon: Crosshair, cssColorVar: "--color-tool-origin", hex: "#7c3aed", mode: "setOrigin" },
   { id: "track", label: "Add point", Icon: Plus, cssColorVar: "--color-tool-add", hex: "#16a34a", mode: "track" },
   { id: "auto", label: "Auto-track", Icon: Target, cssColorVar: "--color-tool-auto", hex: "#ea580c" },
 ];
 
+/** "Anything to lose" check: does the user have tracked points in any object? */
+function hasUnsavedWork(state: ReturnType<typeof useAnalysisStore.getState>): boolean {
+  return state.objects.some((o) => o.points.length > 0);
+}
+
 export function ActionRibbon() {
   const mode = useAnalysisStore((s) => s.mode);
   const setMode = useAnalysisStore((s) => s.setMode);
+  const setCalibration = useAnalysisStore((s) => s.setCalibration);
+  const setPendingCalibrationP1 = useAnalysisStore(
+    (s) => s.setPendingCalibrationP1
+  );
   const stepSize = useAnalysisStore((s) => s.stepSize);
   const setStepSize = useAnalysisStore((s) => s.setStepSize);
   const objects = useAnalysisStore((s) => s.objects);
@@ -46,23 +56,69 @@ export function ActionRibbon() {
   const importInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
 
+  const startImport = () => importInput.current?.click();
+
+  const onNewVideo = async () => {
+    const state = useAnalysisStore.getState();
+    if (!hasUnsavedWork(state)) {
+      startImport();
+      return;
+    }
+    type Choice = "save" | "discard" | "cancel";
+    const choice = await showModal<Choice>({
+      title: "Save before loading a new video?",
+      body: (
+        <>
+          You have tracking data in this session. Loading a new video will replace
+          everything in this workspace.
+        </>
+      ),
+      actions: [
+        { label: "Cancel", value: "cancel", variant: "secondary" },
+        { label: "Discard", value: "discard", variant: "danger" },
+        { label: "Save & continue", value: "save", variant: "primary" },
+      ],
+      dismissValue: "cancel",
+    });
+    if (choice === "cancel") return;
+    if (choice === "save") {
+      const snap = exportProject(
+        state,
+        video?.filename?.replace(/\.[^.]+$/, "") ?? "project"
+      );
+      downloadProject(snap, `${snap.name || "project"}.motion`);
+    }
+    startImport();
+  };
+
   const onTool = (t: ToolDef) => {
     if (t.id === "import") {
-      importInput.current?.click();
+      void onNewVideo();
       return;
     }
     if (t.id === "auto") {
-      alert(
-        "Auto-tracking (template matching) is coming in a follow-up release."
+      void showAlert(
+        "Auto-track — coming soon",
+        "Template-matching auto-tracking lands in a follow-up release."
       );
       return;
     }
     if (!t.mode) return;
     if (t.id === "track" && !calibration) {
-      alert("Calibrate the scale first so tracked points have real-world units.");
+      void showAlert(
+        "Calibrate first",
+        "Set a real-world scale with the Calibrate tool so tracked points get meaningful units."
+      );
       return;
     }
-    setMode(mode === t.mode ? "idle" : t.mode);
+    // Toggle behavior. Entering calibrate clears any previous calibration so
+    // the canvas isn't littered with the old line while drawing the new one.
+    const goingTo = mode === t.mode ? "idle" : t.mode;
+    if (goingTo === "calibrate") {
+      setCalibration(null);
+      setPendingCalibrationP1(null);
+    }
+    setMode(goingTo);
   };
 
   const onImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,18 +134,32 @@ export function ActionRibbon() {
       const snap = await readProjectFile(file);
       loadProject(snap);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to load .motion file");
+      void showAlert(
+        "Couldn't load .motion file",
+        err instanceof Error ? err.message : "Unknown error"
+      );
     } finally {
       e.target.value = "";
     }
   };
 
-  const onFpsClick = () => {
+  const onFpsClick = async () => {
     if (!video) return;
-    const next = window.prompt(`Recording fps (current ${fps}):`, String(fps));
-    if (next === null) return;
-    const v = Number(next);
-    if (Number.isFinite(v) && v > 0) setFpsOverride(v);
+    const v = await showPrompt({
+      title: "Recording frame rate",
+      body: (
+        <>
+          Browsers can't read fps from a video file directly. Common values: 24, 30,
+          60, 120, 240. Defaults to 30 unless you set it here.
+        </>
+      ),
+      initialValue: String(fps),
+      type: "number",
+      placeholder: "e.g. 60",
+    });
+    if (v === null) return;
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) setFpsOverride(n);
   };
 
   return (

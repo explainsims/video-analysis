@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { metersPerPixel, type Vec2 } from "@/lib/math";
 import { pointerToImageCoords } from "@/lib/input";
 import { deriveObject } from "@/lib/derived";
+import { showPrompt } from "@/lib/modal";
 import { effectiveFps, useAnalysisStore } from "@/lib/store";
 import type { VideoEngine } from "@/lib/videoEngine";
 
@@ -43,6 +44,8 @@ export function CanvasOverlay({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const draggingRotationRef = useRef(false);
+  // Live cursor position (in image coords) for the calibrate preview line.
+  const [calibrateHover, setCalibrateHover] = useState<Vec2 | null>(null);
 
   const video = useAnalysisStore((s) => s.video);
   const calibration = useAnalysisStore((s) => s.calibration);
@@ -52,6 +55,11 @@ export function CanvasOverlay({
   const selectedFrame = useAnalysisStore((s) => s.selectedFrame);
   const mode = useAnalysisStore((s) => s.mode);
   const pendingP1 = useAnalysisStore((s) => s.pendingCalibrationP1);
+
+  // Clear the hover preview whenever we leave calibrate mode or commit p1.
+  useEffect(() => {
+    if (mode !== "calibrate" || !pendingP1) setCalibrateHover(null);
+  }, [mode, pendingP1]);
 
   // Keep canvas backing-store size in sync with the displayed video box.
   useEffect(() => {
@@ -95,35 +103,36 @@ export function CanvasOverlay({
 
     const toCss = (p: Vec2): Vec2 => [p[0] * sx, p[1] * sy];
 
-    // --- Calibration line ---
-    if (calibration) {
+    // --- Calibration line (committed) ---
+    if (calibration && mode !== "calibrate") {
       const a = toCss(calibration.p1);
       const b = toCss(calibration.p2);
-      ctx.strokeStyle = "#FBBF24";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      ctx.beginPath();
-      ctx.moveTo(a[0], a[1]);
-      ctx.lineTo(b[0], b[1]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      drawHandle(ctx, a, "#FBBF24");
-      drawHandle(ctx, b, "#FBBF24");
-      ctx.fillStyle = "#FBBF24";
-      ctx.font = "12px ui-monospace, monospace";
+      drawAlternatingDashedLine(ctx, a, b);
+      drawBracket(ctx, a, b, "start");
+      drawBracket(ctx, a, b, "end");
+      ctx.fillStyle = "#1d2433";
+      ctx.font = "bold 12px ui-monospace, monospace";
       ctx.fillText(
         `${calibration.realWorldMeters} m`,
-        (a[0] + b[0]) / 2 + 6,
-        (a[1] + b[1]) / 2 - 6
+        (a[0] + b[0]) / 2 + 8,
+        (a[1] + b[1]) / 2 - 8
       );
     }
 
+    // --- Calibration in progress: live preview from p1 to cursor ---
     if (mode === "calibrate" && pendingP1) {
-      drawHandle(ctx, toCss(pendingP1), "#FBBF24");
+      const a = toCss(pendingP1);
+      const cursor = calibrateHover ? toCss(calibrateHover) : null;
+      if (cursor) {
+        drawAlternatingDashedLine(ctx, a, cursor);
+        drawBracket(ctx, a, cursor, "end");
+      }
+      drawBracket(ctx, a, cursor ?? [a[0] + 1, a[1]], "start");
     }
 
-    // --- Axes (rigid 90° pair, always perpendicular) ---
-    {
+    // --- Axes (rigid 90° pair) — hidden during calibrate so it doesn't
+    //     fight the calibration UI for attention. ---
+    if (mode !== "calibrate") {
       const o = toCss(axes.originPx);
       const { xDir, yDir } = axisDirs(axes.rotationRad);
       const xEnd: Vec2 = [o[0] + AXIS_DRAW_LEN_PX * xDir[0], o[1] + AXIS_DRAW_LEN_PX * xDir[1]];
@@ -239,15 +248,6 @@ export function CanvasOverlay({
       }
     }
 
-    function drawHandle(c: CanvasRenderingContext2D, p: Vec2, color: string) {
-      c.fillStyle = color;
-      c.strokeStyle = "rgba(0,0,0,0.5)";
-      c.lineWidth = 1;
-      c.beginPath();
-      c.arc(p[0], p[1], 5, 0, Math.PI * 2);
-      c.fill();
-      c.stroke();
-    }
     function drawArrowHead(c: CanvasRenderingContext2D, from: Vec2, to: Vec2, color: string) {
       const ang = Math.atan2(to[1] - from[1], to[0] - from[0]);
       const size = 8;
@@ -259,9 +259,95 @@ export function CanvasOverlay({
       c.closePath();
       c.fill();
     }
+
+    /**
+     * Two-pass alternating yellow / black dashed line, so the calibration is
+     * visible against both bright and dark video backgrounds. Dashes are short
+     * (~2 px) — roughly a third of the prior committed-line dash length.
+     */
+    function drawAlternatingDashedLine(
+      c: CanvasRenderingContext2D,
+      a: Vec2,
+      b: Vec2
+    ) {
+      const segLen = 2;
+      c.lineWidth = 2.25;
+      c.lineCap = "butt";
+      c.setLineDash([segLen, segLen]);
+      // Pass 1: yellow, no offset
+      c.strokeStyle = "#FBBF24";
+      c.lineDashOffset = 0;
+      c.beginPath();
+      c.moveTo(a[0], a[1]);
+      c.lineTo(b[0], b[1]);
+      c.stroke();
+      // Pass 2: black, offset by one segment so it fills the gaps
+      c.strokeStyle = "#0B0B12";
+      c.lineDashOffset = segLen;
+      c.beginPath();
+      c.moveTo(a[0], a[1]);
+      c.lineTo(b[0], b[1]);
+      c.stroke();
+      c.setLineDash([]);
+      c.lineDashOffset = 0;
+    }
+
+    /**
+     * Square-bracket marker at one end of a calibration line, oriented
+     * perpendicular to the line. The bracket is drawn yellow with a thin
+     * black halo so it reads against any backdrop. Faces inward toward the
+     * other endpoint, so the [...] reads naturally as "between these".
+     */
+    function drawBracket(
+      c: CanvasRenderingContext2D,
+      from: Vec2,
+      to: Vec2,
+      which: "start" | "end"
+    ) {
+      const dx = to[0] - from[0];
+      const dy = to[1] - from[1];
+      const len = Math.hypot(dx, dy);
+      if (len < 1) return;
+      // Tangent (along line, pointing from from→to) and normal.
+      const tx = dx / len;
+      const ty = dy / len;
+      const nx = -ty;
+      const ny = tx;
+      // Geometry of the bracket: ascender length & cap length.
+      const asc = 9; // perpendicular extent each side of the line
+      const cap = 5; // tangential cap length, points inward (toward center)
+      const p = which === "start" ? from : to;
+      const inwardSign = which === "start" ? 1 : -1;
+      const cx = inwardSign * tx * cap;
+      const cy = inwardSign * ty * cap;
+      const top: Vec2 = [p[0] + nx * asc, p[1] + ny * asc];
+      const bot: Vec2 = [p[0] - nx * asc, p[1] - ny * asc];
+      const topCap: Vec2 = [top[0] + cx, top[1] + cy];
+      const botCap: Vec2 = [bot[0] + cx, bot[1] + cy];
+
+      const path = () => {
+        c.beginPath();
+        c.moveTo(topCap[0], topCap[1]);
+        c.lineTo(top[0], top[1]);
+        c.lineTo(bot[0], bot[1]);
+        c.lineTo(botCap[0], botCap[1]);
+      };
+      // Black halo (thicker, drawn first)
+      c.lineCap = "round";
+      c.lineJoin = "round";
+      c.strokeStyle = "#0B0B12";
+      c.lineWidth = 4;
+      path();
+      c.stroke();
+      // Yellow body
+      c.strokeStyle = "#FBBF24";
+      c.lineWidth = 2;
+      path();
+      c.stroke();
+    }
     void sx;
     void sy;
-  }, [video, calibration, axes, objects, activeObjectId, selectedFrame, mode, pendingP1, showTrails, showVectors]);
+  }, [video, calibration, axes, objects, activeObjectId, selectedFrame, mode, pendingP1, calibrateHover, showTrails, showVectors]);
 
   // Hit-test the rotation handle in CSS coords against the current canvas.
   const isOnRotationHandle = (cssX: number, cssY: number): boolean => {
@@ -313,21 +399,41 @@ export function CanvasOverlay({
     if (state.mode === "calibrate") {
       if (!state.pendingCalibrationP1) {
         state.setPendingCalibrationP1([ix, iy]);
+        setCalibrateHover([ix, iy]);
       } else {
-        const meters = window.prompt(
-          "Real-world distance between the two points (meters):",
-          "1.0"
-        );
-        const m = meters ? Number(meters) : NaN;
-        if (Number.isFinite(m) && m > 0) {
-          state.setCalibration({
-            p1: state.pendingCalibrationP1,
-            p2: [ix, iy],
-            realWorldMeters: m,
+        const p1 = state.pendingCalibrationP1;
+        const p2: Vec2 = [ix, iy];
+        // Ask for the real-world length in a themed modal.
+        void (async () => {
+          const v = await showPrompt({
+            title: "How long is this line?",
+            body: (
+              <>
+                Enter the real-world distance between the two endpoints, in
+                meters. (1 m for a meter stick, 0.3048 for a foot, etc.)
+              </>
+            ),
+            initialValue: "1.0",
+            placeholder: "meters",
+            type: "number",
+            confirmLabel: "Set scale",
           });
-        }
-        state.setPendingCalibrationP1(null);
-        state.setMode("idle");
+          if (v === null) {
+            // Cancelled — drop the pending point and exit calibrate.
+            useAnalysisStore.getState().setPendingCalibrationP1(null);
+            useAnalysisStore.getState().setMode("idle");
+            setCalibrateHover(null);
+            return;
+          }
+          const m = Number(v);
+          const s = useAnalysisStore.getState();
+          if (Number.isFinite(m) && m > 0) {
+            s.setCalibration({ p1, p2, realWorldMeters: m });
+          }
+          s.setPendingCalibrationP1(null);
+          s.setMode("idle");
+          setCalibrateHover(null);
+        })();
       }
       return;
     }
@@ -340,12 +446,14 @@ export function CanvasOverlay({
 
     if (state.mode === "track" && state.calibration) {
       const fpsNow = effectiveFps(state);
-      state.addPoint(state.selectedFrame, state.selectedFrame / fpsNow, ix, iy);
-      // Advance through the engine (same path as the toolbar step buttons).
-      // Using engineRef.stepBy keeps the rVFC → setSelectedFrame loop healthy
-      // and avoids races between direct currentTime writes and the engine's
-      // internal lastEmittedFrame tracking.
-      engineRef.current?.stepBy(state.stepSize);
+      const eng = engineRef.current;
+      // Use the engine's view of "what frame did we last seek to?" rather
+      // than state.selectedFrame, which lags through requestVideoFrameCallback
+      // and can be stale on heavy video — leading to addPoint overwriting the
+      // previous point's slot when the user clicks faster than rVFC fires.
+      const frame = eng ? eng.currentFrame() : state.selectedFrame;
+      state.addPoint(frame, frame / fpsNow, ix, iy);
+      eng?.stepBy(state.stepSize);
     }
   };
 
@@ -355,6 +463,11 @@ export function CanvasOverlay({
     if (draggingRotationRef.current) {
       const [ix, iy] = pointerToImageCoords(e, canvas, video.width, video.height);
       updateRotationFromImagePoint(ix, iy);
+      return;
+    }
+    if (mode === "calibrate" && pendingP1) {
+      const [ix, iy] = pointerToImageCoords(e, canvas, video.width, video.height);
+      setCalibrateHover([ix, iy]);
       return;
     }
     // hover affordance for the handle when idle
