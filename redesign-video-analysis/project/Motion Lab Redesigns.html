@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Motion Lab · Redesign Options</title>
+  <style>
+    html, body, #root { margin: 0; padding: 0; height: 100%; background: #f0eee9; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="shared.jsx"></script>
+  <script type="text/babel" src="directions-a-b.jsx"></script>
+  <script type="text/babel" src="directions-c-d.jsx"></script>
+
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "density": "comfortable",
+      "showTrails": true,
+      "showVectors": true,
+      "fitOverlay": true,
+      "layoutA": "standard"
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+      // Each artboard is a fixed design size; design-canvas handles
+      // scale/focus. We use 1280×800 cards so the desktop UI breathes.
+      const W = 1280, H = 800;
+      const props = {
+        density: t.density,
+        showTrails: t.showTrails,
+        showVectors: t.showVectors,
+      };
+
+      return (
+        <>
+          <DesignCanvas>
+            <DCSection id="redesigns" title="Motion Lab — four redesign directions"
+              subtitle="Click any artboard label to focus. Pan/zoom the canvas. Drag the grip-dot to reorder.">
+              <DCArtboard id="a" label="A · Lab Pro (dark, dense)" width={W} height={H}>
+                <div data-screen-label="A Lab Pro" style={{ width: '100%', height: '100%' }}>
+                  <DirectionA {...props} layout={t.layoutA} />
+                </div>
+              </DCArtboard>
+              <DCArtboard id="b" label="B · Classroom (light, friendly)" width={W} height={H}>
+                <div data-screen-label="B Classroom" style={{ width: '100%', height: '100%' }}>
+                  <DirectionB {...props} />
+                </div>
+              </DCArtboard>
+              <DCArtboard id="c" label="C · Floating Studio (DAW-style)" width={W} height={H}>
+                <div data-screen-label="C Floating Studio" style={{ width: '100%', height: '100%' }}>
+                  <DirectionC {...props} />
+                </div>
+              </DCArtboard>
+              <DCArtboard id="d" label="D · Focus Mode (hero video)" width={W} height={H}>
+                <div data-screen-label="D Focus Mode" style={{ width: '100%', height: '100%' }}>
+                  <DirectionD {...props} />
+                </div>
+              </DCArtboard>
+            </DCSection>
+            <DCPostIt top={120} left={40} rotate={-3} width={210}>
+              Each direction is interactive — click the play button or scrub the timeline.
+              Open Tweaks (toolbar ⚙️) to flip layouts and overlays globally.
+            </DCPostIt>
+          </DesignCanvas>
+
+          <TweaksPanel title="Motion Lab tweaks">
+            <TweakSection label="Display" />
+            <TweakRadio label="Density" value={t.density}
+              options={['compact', 'comfortable']}
+              onChange={(v) => setTweak('density', v)} />
+            <TweakToggle label="Show trails" value={t.showTrails}
+              onChange={(v) => setTweak('showTrails', v)} />
+            <TweakToggle label="Show motion vectors" value={t.showVectors}
+              onChange={(v) => setTweak('showVectors', v)} />
+
+            <TweakSection label="Direction A · Lab Pro" />
+            <TweakRadio label="Layout" value={t.layoutA}
+              options={[{value: 'standard', label: 'Std'}, {value: 'wide-graph', label: 'Wide gr.'}]}
+              onChange={(v) => setTweak('layoutA', v)} />
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
