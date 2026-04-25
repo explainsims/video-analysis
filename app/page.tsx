@@ -27,6 +27,19 @@ export default function Page() {
       ) {
         return;
       }
+      // Delete-point keyboard handler runs even without an engine
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const state = useAnalysisStore.getState();
+        if (state.mode === "delete" && state.selectedPoint) {
+          e.preventDefault();
+          state.removePoint(
+            state.selectedPoint.objectId,
+            state.selectedPoint.frame
+          );
+          state.setSelectedPoint(null);
+          return;
+        }
+      }
       const eng = engineRef.current;
       if (!eng) return;
       if (e.key === " ") {
@@ -58,7 +71,7 @@ export default function Page() {
       <TopBar />
       <ActionRibbon />
       {expandedPane ? (
-        <div className="flex-1 p-4 min-h-0">
+        <div className="flex-1 flex flex-col p-4 min-h-0">
           {expandedPane === "video" ? (
             <VideoPane engineRef={engineRef} fps={fps} />
           ) : (

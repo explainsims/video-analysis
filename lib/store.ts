@@ -3,7 +3,12 @@
 import { create } from "zustand";
 import type { Axes, Calibration, Vec2 } from "./math";
 
-export type Mode = "idle" | "calibrate" | "setOrigin" | "track";
+export type Mode = "idle" | "calibrate" | "setOrigin" | "track" | "delete";
+
+export interface SelectedPoint {
+  objectId: string;
+  frame: number;
+}
 
 export interface TrackedPoint {
   frame: number;
@@ -56,6 +61,11 @@ export interface AnalysisState {
   /** Which pane is full-screen-within-page, if any. */
   expandedPane: "video" | "graph" | null;
 
+  /** User-editable project title (used for save / export filenames). */
+  projectName: string;
+  /** The currently-selected tracked point (only set when mode === 'delete'). */
+  selectedPoint: SelectedPoint | null;
+
   // UI
   mode: Mode;
   // Transient state for a multi-step calibration in progress
@@ -72,6 +82,9 @@ export interface AnalysisState {
   setShowOverlays: (b: boolean) => void;
   setZeroFirstPoint: (b: boolean) => void;
   setExpandedPane: (p: "video" | "graph" | null) => void;
+
+  setProjectName: (s: string) => void;
+  setSelectedPoint: (p: SelectedPoint | null) => void;
 
   setPendingCalibrationP1: (p: Vec2 | null) => void;
   setCalibration: (c: Calibration | null) => void;
@@ -139,6 +152,8 @@ const initial = (): Pick<
   | "showOverlays"
   | "zeroFirstPoint"
   | "expandedPane"
+  | "projectName"
+  | "selectedPoint"
   | "mode"
   | "pendingCalibrationP1"
 > => {
@@ -157,6 +172,8 @@ const initial = (): Pick<
     showOverlays: true,
     zeroFirstPoint: false,
     expandedPane: null,
+    projectName: "Untitled project",
+    selectedPoint: null,
     mode: "idle",
     pendingCalibrationP1: null,
   };
@@ -166,17 +183,19 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   ...initial(),
 
   loadVideo: (url, meta) =>
-    set({
+    set((s) => ({
       videoUrl: url,
       video: meta,
       selectedFrame: 0,
-      // Seed axes at the image center so toAxisFrame has a sensible default
-      // even before the user explicitly sets the origin. axesSet stays false
-      // so the canvas overlay knows not to draw anything axis-related yet.
       axes: { originPx: [meta.width / 2, meta.height / 2], rotationRad: 0 },
       axesSet: false,
       calibration: null,
-    }),
+      // If the user hasn't named the project yet, derive one from the file.
+      projectName:
+        s.projectName === "Untitled project" || s.projectName === ""
+          ? meta.filename.replace(/\.[^.]+$/, "")
+          : s.projectName,
+    })),
 
   unloadVideo: () => {
     const url = get().videoUrl;
@@ -187,13 +206,17 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   setSelectedFrame: (n) => {
     if (n !== get().selectedFrame) set({ selectedFrame: n });
   },
-  setMode: (m) => set({ mode: m, pendingCalibrationP1: null }),
+  setMode: (m) =>
+    set({ mode: m, pendingCalibrationP1: null, selectedPoint: null }),
   setStepSize: (n) => set({ stepSize: Math.max(1, Math.round(n)) }),
   setFpsOverride: (fps) => set({ fpsOverride: fps }),
 
   setShowOverlays: (b) => set({ showOverlays: b }),
   setZeroFirstPoint: (b) => set({ zeroFirstPoint: b }),
   setExpandedPane: (p) => set({ expandedPane: p }),
+
+  setProjectName: (s) => set({ projectName: s }),
+  setSelectedPoint: (p) => set({ selectedPoint: p }),
 
   setPendingCalibrationP1: (p) => set({ pendingCalibrationP1: p }),
   setCalibration: (c) => set({ calibration: c }),

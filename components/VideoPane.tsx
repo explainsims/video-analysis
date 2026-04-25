@@ -251,7 +251,20 @@ export function VideoPane({ engineRef, fps }: Props) {
                   color: "#fff",
                 }}
               >
-                Click to add · right-click a point to delete it
+                Click on the object to add a point
+              </div>
+            )}
+            {mode === "delete" && (
+              <div
+                className="absolute bottom-3 left-3 text-[11px] font-bold tracking-wider uppercase pointer-events-none"
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: 999,
+                  background: "rgba(220,38,38,0.85)",
+                  color: "#fff",
+                }}
+              >
+                Click a point to select · press Delete to remove
               </div>
             )}
           </>
@@ -268,46 +281,63 @@ export function VideoPane({ engineRef, fps }: Props) {
       </div>
 
       {/* Transport */}
-      <div className="card-footer flex items-center gap-2">
-        <button
-          onClick={() => engineRef.current?.seekToFrame(0)}
-          disabled={!video}
-          className="btn-soft disabled:opacity-50"
-          title="Jump to first frame"
-        >
-          <ChevronsLeft size={14} />
-        </button>
-        <button
-          onClick={() => engineRef.current?.stepBy(-stepSize)}
-          disabled={!video}
-          className="btn-soft disabled:opacity-50"
-          title="Step back (,)"
-        >
-          <ChevronLeft size={14} /> {stepSize}
-        </button>
-        <button
-          onClick={togglePlay}
-          disabled={!video}
-          className="btn-pill"
-          style={{ background: "rgb(var(--color-brand))" }}
-          title="Play / Pause (Space)"
-        >
-          {paused ? <Play size={14} /> : <Pause size={14} />}
-          {paused ? "Play" : "Pause"}
-        </button>
-        <button
-          onClick={() => engineRef.current?.stepBy(stepSize)}
-          disabled={!video}
-          className="btn-soft disabled:opacity-50"
-          title="Step forward (.)"
-        >
-          {stepSize} <ChevronRight size={14} />
-        </button>
-        <div className="flex-1" />
-        <span className="font-mono text-[11px] text-muted tabular">
-          frame {selectedFrame}
-          {video && ` / ${Math.max(1, Math.floor(video.durationSec * fps)) - 1}`}
-        </span>
+      <div className="card-footer flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => engineRef.current?.seekToFrame(0)}
+            disabled={!video}
+            className="btn-soft disabled:opacity-50"
+            title="Jump to first frame"
+          >
+            <ChevronsLeft size={14} />
+          </button>
+          <button
+            onClick={() => engineRef.current?.stepBy(-stepSize)}
+            disabled={!video}
+            className="btn-soft disabled:opacity-50"
+            title="Step back (,)"
+          >
+            <ChevronLeft size={14} /> {stepSize}
+          </button>
+          <button
+            onClick={togglePlay}
+            disabled={!video}
+            className="btn-pill"
+            style={{ background: "rgb(var(--color-brand))" }}
+            title="Play / Pause (Space)"
+          >
+            {paused ? <Play size={14} /> : <Pause size={14} />}
+            {paused ? "Play" : "Pause"}
+          </button>
+          <button
+            onClick={() => engineRef.current?.stepBy(stepSize)}
+            disabled={!video}
+            className="btn-soft disabled:opacity-50"
+            title="Step forward (.)"
+          >
+            {stepSize} <ChevronRight size={14} />
+          </button>
+          <div className="flex-1" />
+          <span className="font-mono text-[11px] text-muted tabular">
+            frame {selectedFrame}
+            {video && ` / ${Math.max(1, Math.floor(video.durationSec * fps)) - 1}`}
+          </span>
+        </div>
+        {video && (
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, Math.floor(video.durationSec * fps) - 1)}
+            value={selectedFrame}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              engineRef.current?.seekToFrame(n);
+              setSelectedFrame(n);
+            }}
+            className="uml-scrubber w-full"
+            aria-label="Video scrubber"
+          />
+        )}
       </div>
     </div>
   );

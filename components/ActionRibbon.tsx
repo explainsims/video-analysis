@@ -1,6 +1,13 @@
 "use client";
 
-import { Aperture, Crosshair, Plus, Ruler, Target, Upload } from "lucide-react";
+import {
+  Crosshair,
+  FolderOpen,
+  Plus,
+  Ruler,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useRef } from "react";
 import { loadVideoFile } from "@/lib/loadVideoFile";
 import { showAlert, showModal, showPrompt } from "@/lib/modal";
@@ -9,7 +16,7 @@ import { effectiveFps, useAnalysisStore, type Mode } from "@/lib/store";
 
 const STEP_OPTIONS = [1, 2, 5];
 
-type ToolId = "import" | "calibrate" | "setOrigin" | "track" | "auto";
+type ToolId = "import" | "calibrate" | "setOrigin" | "track" | "delete";
 
 interface ToolDef {
   id: ToolId;
@@ -26,7 +33,7 @@ const TOOLS: ToolDef[] = [
   { id: "calibrate", label: "Calibrate", Icon: Ruler, cssColorVar: "--color-tool-cal", hex: "#0891b2", mode: "calibrate" },
   { id: "setOrigin", label: "Set origin", Icon: Crosshair, cssColorVar: "--color-tool-origin", hex: "#7c3aed", mode: "setOrigin" },
   { id: "track", label: "Add point", Icon: Plus, cssColorVar: "--color-tool-add", hex: "#16a34a", mode: "track" },
-  { id: "auto", label: "Auto-track", Icon: Target, cssColorVar: "--color-tool-auto", hex: "#ea580c" },
+  { id: "delete", label: "Delete point", Icon: Trash2, cssColorVar: "--color-tool-auto", hex: "#dc2626", mode: "delete" },
 ];
 
 /** "Anything to lose" check: does the user have tracked points in any object? */
@@ -96,18 +103,18 @@ export function ActionRibbon() {
       void onNewVideo();
       return;
     }
-    if (t.id === "auto") {
-      void showAlert(
-        "Auto-track — coming soon",
-        "Template-matching auto-tracking lands in a follow-up release."
-      );
-      return;
-    }
     if (!t.mode) return;
     if (t.id === "track" && !calibration) {
       void showAlert(
         "Calibrate first",
         "Set a real-world scale with the Calibrate tool so tracked points get meaningful units."
+      );
+      return;
+    }
+    if (t.id === "delete" && !objects.some((o) => o.points.length > 0)) {
+      void showAlert(
+        "Nothing to delete",
+        "There are no tracked points yet. Add a few with the Add point tool first."
       );
       return;
     }
@@ -141,6 +148,25 @@ export function ActionRibbon() {
     } finally {
       e.target.value = "";
     }
+  };
+
+  const onCustomStep = async () => {
+    const v = await showPrompt({
+      title: "Custom step size",
+      body: (
+        <>
+          How many frames should the tracker advance after each click? Use a
+          larger step for high-fps slow-mo, or 1 for frame-by-frame work.
+        </>
+      ),
+      initialValue: String(stepSize),
+      type: "number",
+      placeholder: "e.g. 3",
+      confirmLabel: "Set step",
+    });
+    if (v === null) return;
+    const n = Number(v);
+    if (Number.isFinite(n) && n >= 1) setStepSize(Math.round(n));
   };
 
   const onFpsClick = async () => {
@@ -237,6 +263,24 @@ export function ActionRibbon() {
             {n}
           </button>
         ))}
+        <button
+          onClick={onCustomStep}
+          title="Set a custom step size"
+          className="text-xs font-bold cursor-pointer rounded-full transition tabular"
+          style={{
+            padding: "2px 10px",
+            background:
+              !STEP_OPTIONS.includes(stepSize)
+                ? "rgb(var(--color-text))"
+                : "transparent",
+            color:
+              !STEP_OPTIONS.includes(stepSize)
+                ? "rgb(var(--color-surface))"
+                : "rgb(var(--color-muted))",
+          }}
+        >
+          {!STEP_OPTIONS.includes(stepSize) ? stepSize : "…"}
+        </button>
       </div>
 
       <button
@@ -252,11 +296,26 @@ export function ActionRibbon() {
 
       <button
         onClick={() => projectInput.current?.click()}
-        title="Load .motion file"
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface text-xs font-semibold text-muted hover:text-text transition"
-        style={{ border: "1.5px solid rgb(var(--color-border) / 0.12)" }}
+        title="Load a previously-saved .motion file"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface text-xs font-semibold transition"
+        style={{
+          border: "1.5px solid rgb(var(--color-border) / 0.12)",
+          color: "rgb(var(--color-text))",
+        }}
       >
-        <Aperture size={13} /> Load .motion
+        <span
+          className="flex items-center justify-center"
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 6,
+            background: "#f59e0b1c",
+            color: "#f59e0b",
+          }}
+        >
+          <FolderOpen size={13} strokeWidth={2.5} />
+        </span>
+        Load data
       </button>
 
       <div className="flex-1" />

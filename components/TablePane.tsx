@@ -6,7 +6,7 @@ import { deriveObject, type DerivedRow } from "@/lib/derived";
 import { useAnalysisStore } from "@/lib/store";
 
 const COLS: { key: keyof DerivedRow; label: string; unit?: string }[] = [
-  { key: "frame", label: "#" },
+  { key: "frame", label: "Frame" },
   { key: "t", label: "t", unit: "s" },
   { key: "x", label: "x", unit: "m" },
   { key: "y", label: "y", unit: "m" },

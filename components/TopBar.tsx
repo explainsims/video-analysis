@@ -1,20 +1,31 @@
 "use client";
 
-import { Download, FileSpreadsheet, Moon, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Download, FileSpreadsheet, Moon, Pencil, Sun } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { showAlert } from "@/lib/modal";
 import { downloadProject, exportProject } from "@/lib/projectFile";
 import { useAnalysisStore } from "@/lib/store";
 
 export function TopBar() {
   const video = useAnalysisStore((s) => s.video);
+  const projectName = useAnalysisStore((s) => s.projectName);
+  const setProjectName = useAnalysisStore((s) => s.setProjectName);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const t = (localStorage.getItem("uml-theme") as "light" | "dark" | null) ?? "light";
     setTheme(t);
     document.documentElement.setAttribute("data-theme", t);
   }, []);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
 
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light";
@@ -25,11 +36,11 @@ export function TopBar() {
 
   const onSave = () => {
     const state = useAnalysisStore.getState();
-    const snap = exportProject(
-      state,
-      video?.filename?.replace(/\.[^.]+$/, "") ?? "project"
-    );
-    downloadProject(snap, `${snap.name || "project"}.motion`);
+    const safeName =
+      (state.projectName || "project").trim().replace(/[^\w.\- ]+/g, "_") ||
+      "project";
+    const snap = exportProject(state, safeName);
+    downloadProject(snap, `${safeName}.motion`);
   };
 
   const onExportSheets = () => {
@@ -39,7 +50,13 @@ export function TopBar() {
     );
   };
 
-  const subtitle = video ? `Project: ${video.filename}` : "Drop a video to begin";
+  const commitTitle = () => {
+    const v = (inputRef.current?.value ?? "").trim();
+    setProjectName(v || "Untitled project");
+    setEditing(false);
+  };
+
+  const subtitle = video ? video.filename : "Drop a video to begin";
 
   return (
     <div
@@ -49,9 +66,9 @@ export function TopBar() {
         borderBottom: "1px solid rgb(var(--color-border) / 0.08)",
       }}
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2.5 min-w-0">
         <div
-          className="flex items-center justify-center text-white font-extrabold text-sm"
+          className="flex items-center justify-center text-white font-extrabold text-sm flex-shrink-0"
           style={{
             width: 32,
             height: 32,
@@ -62,9 +79,46 @@ export function TopBar() {
         >
           M
         </div>
-        <div>
-          <div className="font-bold text-[15px] tracking-tight leading-none">
+        <div className="min-w-0">
+          <div className="font-bold text-[15px] tracking-tight leading-none flex items-center gap-1.5">
             Motion Lab
+            <span className="text-muted font-normal">·</span>
+            {editing ? (
+              <input
+                ref={inputRef}
+                defaultValue={projectName}
+                onBlur={commitTitle}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitTitle();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setEditing(false);
+                  }
+                }}
+                className="font-semibold text-[14px] bg-transparent outline-none"
+                style={{
+                  borderBottom: "1.5px solid rgb(var(--color-brand))",
+                  minWidth: 80,
+                  maxWidth: 360,
+                  color: "rgb(var(--color-text))",
+                }}
+              />
+            ) : (
+              <button
+                onClick={() => setEditing(true)}
+                className="group flex items-center gap-1 font-semibold text-[14px] hover:text-brand transition truncate max-w-[40ch]"
+                title="Click to rename project"
+                style={{ color: "rgb(var(--color-text))" }}
+              >
+                <span className="truncate">{projectName}</span>
+                <Pencil
+                  size={11}
+                  className="opacity-0 group-hover:opacity-60 flex-shrink-0"
+                />
+              </button>
+            )}
           </div>
           <div className="text-[11px] text-muted mt-0.5 truncate max-w-[40ch]">
             {subtitle}
