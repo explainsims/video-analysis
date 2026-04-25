@@ -12,6 +12,7 @@ const config: Config = {
       },
       colors: {
         bg: "rgb(var(--color-bg) / <alpha-value>)",
+        "bg-alt": "rgb(var(--color-bg-alt) / <alpha-value>)",
         surface: "rgb(var(--color-surface) / <alpha-value>)",
         text: "rgb(var(--color-text) / <alpha-value>)",
         muted: "rgb(var(--color-muted) / <alpha-value>)",
@@ -21,6 +22,12 @@ const config: Config = {
           alt: "rgb(var(--color-brand-alt) / <alpha-value>)",
         },
         accent: "rgb(var(--color-accent) / <alpha-value>)",
+        tool: {
+          cal: "rgb(var(--color-tool-cal) / <alpha-value>)",
+          origin: "rgb(var(--color-tool-origin) / <alpha-value>)",
+          add: "rgb(var(--color-tool-add) / <alpha-value>)",
+          auto: "rgb(var(--color-tool-auto) / <alpha-value>)",
+        },
         objA: "rgb(var(--color-obj-a) / <alpha-value>)",
         objB: "rgb(var(--color-obj-b) / <alpha-value>)",
       },

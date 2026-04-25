@@ -68,7 +68,9 @@ export class VideoEngine {
   }
 
   currentFrame(): number {
-    return Math.round(this.video.currentTime * this.fps);
+    // floor, not round: seekToFrame parks currentTime at (n + 0.5)/fps so a
+    // round here would report n+1. floor((n + 0.5)) === n, which round-trips.
+    return Math.floor(this.video.currentTime * this.fps);
   }
 
   totalFrames(): number {
