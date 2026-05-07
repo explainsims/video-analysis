@@ -106,10 +106,11 @@ export function HelpPanel({ open, onClose }: Props) {
               with unsaved tracking offers to save first.
             </p>
             <p>
-              <b>FPS pill</b> (next to the video size): browsers can&apos;t read frame
-              rate from a video file directly, so the app defaults to 30. Click the
-              pill to enter the actual recording rate (24, 60, 120, 240, etc.). All
-              time and velocity values depend on this — set it correctly.
+              <b>FPS pill</b> (in the transport row under the video, next to
+              Speed): browsers can&apos;t read frame rate from a video file
+              directly, so the app defaults to 30. Click the pill to enter the
+              actual recording rate (24, 60, 120, 240, etc.). All time and
+              velocity values depend on this — set it correctly.
             </p>
           </Section>
 

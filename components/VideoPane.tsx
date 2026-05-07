@@ -116,10 +116,7 @@ export function VideoPane({ engineRef, fps }: Props) {
       : [];
   const cur = derived.find((d) => d.frame === selectedFrame);
 
-  const sizeLabel =
-    video && video.durationSec
-      ? `${video.width}×${video.height} · ${video.durationSec.toFixed(1)}s`
-      : null;
+  const sizeLabel = video ? `${video.width}×${video.height}` : null;
 
   const overlaysToggleEnabled = axesSet || calibration != null;
   const isExpanded = expandedPane === "video";
@@ -170,20 +167,6 @@ export function VideoPane({ engineRef, fps }: Props) {
         />
         <span>Video tracker</span>
         {sizeLabel && <span className="pill ml-1">{sizeLabel}</span>}
-        {video && (
-          <button
-            onClick={onFpsClick}
-            title="Click to change frame rate"
-            className="flex items-center gap-1 px-2 py-0.5 rounded-full"
-            style={{
-              border: "1.5px solid rgb(var(--color-border) / 0.12)",
-              background: "rgb(var(--color-bg-alt))",
-            }}
-          >
-            <span className="text-[10px] text-muted font-semibold">FPS</span>
-            <span className="text-[11px] font-semibold tabular">{fps}</span>
-          </button>
-        )}
         <div className="flex-1" />
         <Toggle
           label="Show axes & calibration"
@@ -396,6 +379,24 @@ export function VideoPane({ engineRef, fps }: Props) {
               ))}
             </select>
           </div>
+          {video && (
+            <button
+              onClick={onFpsClick}
+              title="Click to change recording frame rate"
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-surface"
+              style={{ border: "1.5px solid rgb(var(--color-border) / 0.12)" }}
+            >
+              <span className="text-[11px] text-muted font-semibold pr-0.5">
+                FPS
+              </span>
+              <span
+                className="text-[11px] font-bold tabular"
+                style={{ color: "rgb(var(--color-text))", padding: "0 2px" }}
+              >
+                {fps}
+              </span>
+            </button>
+          )}
           <div className="flex-1" />
           {video && (
             <button
