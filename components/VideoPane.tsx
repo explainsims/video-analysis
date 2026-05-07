@@ -9,7 +9,6 @@ import {
   Minimize2,
   Pause,
   Play,
-  Shrink,
   TimerReset,
   Trash2,
   Upload,
@@ -57,8 +56,6 @@ export function VideoPane({ engineRef, fps }: Props) {
   const setZeroFirstPoint = useAnalysisStore((s) => s.setZeroFirstPoint);
   const expandedPane = useAnalysisStore((s) => s.expandedPane);
   const setExpandedPane = useAnalysisStore((s) => s.setExpandedPane);
-  const fitToWindow = useAnalysisStore((s) => s.fitToWindow);
-  const setFitToWindow = useAnalysisStore((s) => s.setFitToWindow);
   const clearPoints = useAnalysisStore((s) => s.clearPoints);
   const playSpeed = useAnalysisStore((s) => s.playSpeed);
   const setPlaySpeed = useAnalysisStore((s) => s.setPlaySpeed);
@@ -215,19 +212,6 @@ export function VideoPane({ engineRef, fps }: Props) {
             <Trash2 size={12} /> Clear points
           </button>
         )}
-        <button
-          onClick={() => setFitToWindow(!fitToWindow)}
-          className="btn-soft"
-          data-active={fitToWindow ? "true" : undefined}
-          style={{ padding: "5px 8px", fontSize: 11 }}
-          title={
-            fitToWindow
-              ? "Restore default sizing"
-              : "Fit the whole interface to the window so it stays on a single page"
-          }
-        >
-          <Shrink size={13} />
-        </button>
         <button
           onClick={() => setExpandedPane(isExpanded ? null : "video")}
           className="btn-soft"

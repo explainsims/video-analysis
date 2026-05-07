@@ -64,9 +64,6 @@ export interface AnalysisState {
   manualTimeZeroFrame: number | null;
   /** Which pane is full-screen-within-page, if any. */
   expandedPane: "video" | "graph" | null;
-  /** When on, the whole app is constrained to the viewport so the entire
-   *  interface stays visible on a single page (no scrolling). */
-  fitToWindow: boolean;
 
   /** User-editable custom data table (independent of tracked points). */
   customTable: CustomTableData;
@@ -97,7 +94,6 @@ export interface AnalysisState {
   setZeroFirstPoint: (b: boolean) => void;
   setManualTimeZeroFrame: (frame: number | null) => void;
   setExpandedPane: (p: "video" | "graph" | null) => void;
-  setFitToWindow: (b: boolean) => void;
 
   setShowCustomTable: (b: boolean) => void;
   addCustomTableColumn: () => void;
@@ -199,7 +195,6 @@ const initial = (): Pick<
   | "zeroFirstPoint"
   | "manualTimeZeroFrame"
   | "expandedPane"
-  | "fitToWindow"
   | "customTable"
   | "showCustomTable"
   | "projectName"
@@ -224,7 +219,6 @@ const initial = (): Pick<
     zeroFirstPoint: false,
     manualTimeZeroFrame: null,
     expandedPane: null,
-    fitToWindow: false,
     customTable: defaultCustomTable(),
     showCustomTable: false,
     projectName: "Untitled project",
@@ -247,6 +241,13 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       axesSet: false,
       calibration: null,
       manualTimeZeroFrame: null,
+      // Loading a new video is a fresh workspace — wipe any prior tracking
+      // state so dots from the previous clip don't bleed through.
+      objects: [newObject(0)],
+      activeObjectId: newObject(0).id,
+      mode: "idle",
+      pendingCalibrationP1: null,
+      selectedPoint: null,
       // If the user hasn't named the project yet, derive one from the file.
       projectName:
         s.projectName === "Untitled project" || s.projectName === ""
@@ -278,7 +279,6 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     })),
   setManualTimeZeroFrame: (frame) => set({ manualTimeZeroFrame: frame }),
   setExpandedPane: (p) => set({ expandedPane: p }),
-  setFitToWindow: (b) => set({ fitToWindow: b }),
 
   setShowCustomTable: (b) => set({ showCustomTable: b }),
   addCustomTableColumn: () =>
