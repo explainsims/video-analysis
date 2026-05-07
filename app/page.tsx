@@ -75,6 +75,15 @@ export default function Page() {
   const expandedPane = useAnalysisStore((s) => s.expandedPane);
   const showCustomTable = useAnalysisStore((s) => s.showCustomTable);
 
+  // Lock the video / graph column widths so adding a point can never shift
+  // the divider. Percentages are computed against the grid's content box, so
+  // they can't be inflated by intrinsic content (the chart, the fit footer,
+  // the Clear-points button, etc.). We subtract half the 16px gap from each
+  // share so the two tracks plus the gap exactly fill the row.
+  // 1.55 / 2.55 = 60.7843%, 1 / 2.55 = 39.2157%.
+  const lockedTwoCols =
+    "minmax(0, calc(60.7843% - 8px)) minmax(0, calc(39.2157% - 8px))";
+
   // Measure TopBar + ActionRibbon so the video row can be pinned to the size
   // it had at the empty/no-video state. Without pinning, the video pane shrinks
   // as the data table grows, which makes click placement annoying (every new
@@ -120,10 +129,13 @@ export default function Page() {
         </div>
       ) : (
         <div
-          className="grid gap-4 p-4 grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]"
-          style={{
-            gridTemplateRows: `minmax(320px, ${pinnedTopRow}) auto`,
-          }}
+          className="grid gap-4 p-4 grid-cols-1 lg:[grid-template-columns:var(--locked-cols)]"
+          style={
+            {
+              gridTemplateRows: `minmax(320px, ${pinnedTopRow}) auto`,
+              "--locked-cols": lockedTwoCols,
+            } as React.CSSProperties
+          }
         >
           <div className="min-w-0 min-h-0">
             <VideoPane engineRef={engineRef} fps={fps} />
