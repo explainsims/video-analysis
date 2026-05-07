@@ -50,6 +50,16 @@
   color-scheme: dark;
 }
 
+html {
+  /* Always reserve space for the vertical scrollbar so the layout's pixel
+   * width never changes when content grows past one viewport. Without this,
+   * adding a tracked point would populate the data table, push the page
+   * over 100vh, summon a scrollbar, and silently shrink every column by
+   * the scrollbar's width — visibly nudging the video / graph divider. */
+  scrollbar-gutter: stable;
+  overflow-y: scroll;
+}
+
 html,
 body {
   background: rgb(var(--color-bg));
