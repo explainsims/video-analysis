@@ -276,11 +276,7 @@ export function VideoPane({ engineRef, fps }: Props) {
             <video
               ref={videoRef}
               src={videoUrl}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-              }}
+              className="max-w-full max-h-full"
               playsInline
               muted
               controls={false}
