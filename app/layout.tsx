@@ -7,7 +7,7 @@ const display = Space_Grotesk({ subsets: ["latin"], variable: "--font-display", 
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Ultimate Motion Lab — ExplAIn Sims",
+  title: "Ultimate Video Analysis App — ExplAIn Sims",
   description:
     "Frame-accurate, in-browser video kinematics analysis. Calibrate, track, graph, export.",
 };

@@ -1,4 +1,4 @@
-# Ultimate Motion Lab
+# Ultimate Video Analysis App
 
 Frame-accurate, in-browser video kinematics analysis. Calibrate a real-world
 scale, set rotated axes, click-track moving objects across frames, and get
