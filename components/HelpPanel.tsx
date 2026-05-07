@@ -82,6 +82,7 @@ export function HelpPanel({ open, onClose }: Props) {
           </button>
         </div>
         <div
+          className="help-panel-body"
           style={{
             padding: "16px 18px",
             overflowY: "auto",
@@ -90,6 +91,10 @@ export function HelpPanel({ open, onClose }: Props) {
             lineHeight: 1.6,
           }}
         >
+          <style>{`
+            .help-panel-body p { margin-bottom: 0.85em; }
+            .help-panel-body p:last-child { margin-bottom: 0; }
+          `}</style>
           <Section title="What this app does">
             <p>
               Ultimate Video Analysis turns any video into kinematics data. Track an
