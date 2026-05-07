@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Plus,
   Ruler,
+  Table2,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -59,6 +60,8 @@ export function ActionRibbon() {
   const setFpsOverride = useAnalysisStore((s) => s.setFpsOverride);
   const calibration = useAnalysisStore((s) => s.calibration);
   const loadProject = useAnalysisStore((s) => s.loadProject);
+  const showCustomTable = useAnalysisStore((s) => s.showCustomTable);
+  const setShowCustomTable = useAnalysisStore((s) => s.setShowCustomTable);
 
   const importInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
@@ -316,6 +319,37 @@ export function ActionRibbon() {
           <FolderOpen size={13} strokeWidth={2.5} />
         </span>
         Load data
+      </button>
+
+      <button
+        onClick={() => setShowCustomTable(!showCustomTable)}
+        title={
+          showCustomTable
+            ? "Hide the custom data table"
+            : "Show a free-form table next to the tracking data table"
+        }
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition"
+        style={{
+          border: `1.5px solid ${
+            showCustomTable ? "#0e7490" : "rgb(var(--color-border) / 0.12)"
+          }`,
+          background: showCustomTable ? "#0e74901a" : "rgb(var(--color-surface))",
+          color: showCustomTable ? "#0e7490" : "rgb(var(--color-text))",
+        }}
+      >
+        <span
+          className="flex items-center justify-center"
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 6,
+            background: showCustomTable ? "#0e749033" : "#0e74901c",
+            color: "#0e7490",
+          }}
+        >
+          <Table2 size={13} strokeWidth={2.5} />
+        </span>
+        Custom table
       </button>
 
       <div className="flex-1" />
