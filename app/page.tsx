@@ -72,7 +72,6 @@ export default function Page() {
   };
 
   const expandedPane = useAnalysisStore((s) => s.expandedPane);
-  const fitToWindow = useAnalysisStore((s) => s.fitToWindow);
   const showCustomTable = useAnalysisStore((s) => s.showCustomTable);
 
   // Measure TopBar + ActionRibbon so the video row can be pinned to the size
@@ -99,12 +98,8 @@ export default function Page() {
     chromeH + TABLE_ROW_RESERVED_PX + PADDING_AND_GAP_PX
   }px)`;
 
-  const mainClass = fitToWindow
-    ? "h-screen overflow-hidden flex flex-col bg-bg"
-    : "min-h-screen flex flex-col bg-bg";
-
   return (
-    <main className={mainClass}>
+    <main className="min-h-screen flex flex-col bg-bg">
       <div ref={chromeRef}>
         <TopBar />
         <ActionRibbon />
@@ -119,32 +114,6 @@ export default function Page() {
               <VideoPane engineRef={engineRef} fps={fps} />
             ) : (
               <GraphPane onScrub={seekToFrame} />
-            )}
-          </div>
-        </div>
-      ) : fitToWindow ? (
-        <div
-          className="flex-1 grid gap-4 p-4 grid-cols-1 lg:grid-cols-[1.55fr_1fr] min-h-0"
-          style={{ gridTemplateRows: "minmax(0, 1fr) minmax(0, auto)" }}
-        >
-          <div className="min-w-0 min-h-0">
-            <VideoPane engineRef={engineRef} fps={fps} />
-          </div>
-          <div className="min-w-0 min-h-0">
-            <GraphPane onScrub={seekToFrame} />
-          </div>
-          <div
-            className={`lg:col-span-2 min-w-0 min-h-0 grid gap-4 ${
-              showCustomTable ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
-            }`}
-          >
-            <div className="min-w-0 min-h-0">
-              <TablePane onSelect={seekToFrame} />
-            </div>
-            {showCustomTable && (
-              <div className="min-w-0 min-h-0">
-                <CustomTablePane />
-              </div>
             )}
           </div>
         </div>
