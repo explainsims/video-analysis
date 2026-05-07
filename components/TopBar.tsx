@@ -1,7 +1,8 @@
 "use client";
 
-import { Download, FileSpreadsheet, Moon, Pencil, Sun } from "lucide-react";
+import { Download, FileSpreadsheet, HelpCircle, Moon, Pencil, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { HelpPanel } from "@/components/HelpPanel";
 import { showAlert } from "@/lib/modal";
 import { downloadProject, exportProject } from "@/lib/projectFile";
 import { useAnalysisStore } from "@/lib/store";
@@ -12,6 +13,7 @@ export function TopBar() {
   const setProjectName = useAnalysisStore((s) => s.setProjectName);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [editing, setEditing] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -75,13 +77,13 @@ export function TopBar() {
             borderRadius: 9,
             background: "linear-gradient(135deg, #2563eb, #db2777)",
           }}
-          aria-label="Motion Lab"
+          aria-label="Video Analysis"
         >
-          M
+          V
         </div>
         <div className="min-w-0">
           <div className="font-bold text-[15px] tracking-tight leading-none flex items-center gap-1.5">
-            Motion Lab
+            Video Analysis
             <span className="text-muted font-normal">·</span>
             {editing ? (
               <input
@@ -146,6 +148,15 @@ export function TopBar() {
           <FileSpreadsheet size={14} /> Export to Sheets
         </button>
         <button
+          className="btn-pill"
+          style={{ background: "rgb(var(--color-tool-origin))" }}
+          onClick={() => setHelpOpen(true)}
+          title="Show help"
+          aria-label="Help"
+        >
+          <HelpCircle size={14} /> Help
+        </button>
+        <button
           onClick={toggleTheme}
           aria-label="Toggle theme"
           title="Toggle light / dark"
@@ -154,6 +165,7 @@ export function TopBar() {
           {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
         </button>
       </div>
+      <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
