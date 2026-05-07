@@ -1,8 +1,9 @@
 "use client";
 
-import { FileDown } from "lucide-react";
+import { Copy, FileDown } from "lucide-react";
 import { useMemo } from "react";
 import { deriveObject, type DerivedRow } from "@/lib/derived";
+import { showAlert } from "@/lib/modal";
 import { useAnalysisStore } from "@/lib/store";
 
 const COLS: { key: keyof DerivedRow; label: string; unit?: string }[] = [
@@ -65,12 +66,33 @@ export function TablePane({ onSelect }: { onSelect: (frame: number) => void }) {
     );
   };
 
+  const onCopy = async () => {
+    if (!active || rows.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(rowsToCsv(active.name, rows));
+    } catch {
+      await showAlert(
+        "Couldn't copy to clipboard",
+        "Your browser blocked clipboard access. You can still use Export CSV."
+      );
+    }
+  };
+
   return (
     <div className="card h-full">
       <div className="card-header">
         <span>Data table — {active?.name ?? "—"}</span>
         <span className="pill">{rows.length} {rows.length === 1 ? "point" : "points"}</span>
         <div className="flex-1" />
+        <button
+          onClick={onCopy}
+          disabled={rows.length === 0}
+          className="btn-soft"
+          style={{ padding: "5px 10px", fontSize: 11.5 }}
+          title="Copy table as CSV to clipboard"
+        >
+          <Copy size={12} /> Copy
+        </button>
         <button
           onClick={onExport}
           disabled={rows.length === 0}
@@ -97,7 +119,10 @@ export function TablePane({ onSelect }: { onSelect: (frame: number) => void }) {
                   <th
                     key={c.key}
                     className="px-3 py-2 font-medium"
-                    style={{ borderBottom: "1px solid rgb(var(--color-border) / 0.07)" }}
+                    style={{
+                      borderBottom: "1px solid rgb(var(--color-grid-strong) / 0.7)",
+                      borderRight: "1px solid rgb(var(--color-grid) / 0.45)",
+                    }}
                   >
                     {c.label}
                     {c.unit && <span className="text-muted/70"> ({c.unit})</span>}
@@ -114,7 +139,7 @@ export function TablePane({ onSelect }: { onSelect: (frame: number) => void }) {
                     onClick={() => onSelect(r.frame)}
                     className="cursor-pointer transition"
                     style={{
-                      borderTop: "1px solid rgb(var(--color-border) / 0.05)",
+                      borderTop: "1px solid rgb(var(--color-grid) / 0.45)",
                       background: isCurrent ? `${active?.color ?? "#2563eb"}1a` : "transparent",
                       color: isCurrent ? active?.color ?? "rgb(var(--color-brand))" : undefined,
                       borderLeft: isCurrent
@@ -123,14 +148,23 @@ export function TablePane({ onSelect }: { onSelect: (frame: number) => void }) {
                     }}
                     onMouseEnter={(e) => {
                       if (!isCurrent)
-                        e.currentTarget.style.background = "rgb(var(--color-border) / 0.04)";
+                        e.currentTarget.style.background = "rgb(var(--color-border) / 0.10)";
                     }}
                     onMouseLeave={(e) => {
                       if (!isCurrent) e.currentTarget.style.background = "transparent";
                     }}
                   >
-                    {COLS.map((c) => (
-                      <td key={c.key} className="px-3 py-1.5 text-right">
+                    {COLS.map((c, idx) => (
+                      <td
+                        key={c.key}
+                        className="px-3 py-1.5 text-right"
+                        style={{
+                          borderRight:
+                            idx < COLS.length - 1
+                              ? "1px solid rgb(var(--color-grid) / 0.45)"
+                              : undefined,
+                        }}
+                      >
                         {fmt(r[c.key] as number, c.key)}
                       </td>
                     ))}

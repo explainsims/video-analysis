@@ -391,34 +391,30 @@ export function VideoPane({ engineRef, fps }: Props) {
             {stepSize} <ChevronRight size={14} />
           </button>
           <div
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface ml-1"
+            className="flex items-center gap-1 px-2 py-1 rounded-full bg-surface ml-1"
             style={{ border: "1.5px solid rgb(var(--color-border) / 0.12)" }}
+            title="Playback speed"
           >
             <span className="text-[11px] text-muted font-semibold pr-0.5">
               Speed
             </span>
-            {SPEED_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setPlaySpeed(opt.value)}
-                disabled={!video}
-                className="text-[11px] font-bold cursor-pointer rounded-full transition tabular disabled:opacity-50"
-                style={{
-                  padding: "2px 8px",
-                  background:
-                    playSpeed === opt.value
-                      ? "rgb(var(--color-text))"
-                      : "transparent",
-                  color:
-                    playSpeed === opt.value
-                      ? "rgb(var(--color-surface))"
-                      : "rgb(var(--color-muted))",
-                }}
-                title={`Play at ${opt.label} of real-time speed`}
-              >
-                {opt.label}
-              </button>
-            ))}
+            <select
+              value={playSpeed}
+              onChange={(e) => setPlaySpeed(Number(e.target.value))}
+              disabled={!video}
+              className="text-[11px] font-bold tabular bg-transparent cursor-pointer outline-none disabled:opacity-50"
+              style={{
+                color: "rgb(var(--color-text))",
+                border: "none",
+                padding: "0 2px",
+              }}
+            >
+              {SPEED_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex-1" />
           {video && (
@@ -438,7 +434,8 @@ export function VideoPane({ engineRef, fps }: Props) {
               }
               style={{ padding: "5px 10px", fontSize: 11 }}
             >
-              <TimerReset size={12} /> Zero here
+              <TimerReset size={12} />
+              {manualTimeZeroFrame === null && <span>Zero here</span>}
             </button>
           )}
           {video && manualTimeZeroFrame !== null && !zeroFirstPoint && (
@@ -504,7 +501,7 @@ export function VideoPane({ engineRef, fps }: Props) {
                       fontWeight: 700,
                     }}
                   >
-                    {zeroSource === "manual" ? "t₀ manual" : "t₀"}
+                    t₀
                   </span>
                 )}
                 {curT.toFixed(2)}s / {totalT.toFixed(2)}s

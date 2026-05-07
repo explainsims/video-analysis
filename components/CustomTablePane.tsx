@@ -120,7 +120,8 @@ export function CustomTablePane() {
                   key={i}
                   className="px-2 py-2 font-medium text-left"
                   style={{
-                    borderBottom: "1px solid rgb(var(--color-border) / 0.07)",
+                    borderBottom: "1px solid rgb(var(--color-grid-strong) / 0.7)",
+                    borderRight: "1px solid rgb(var(--color-grid) / 0.45)",
                     minWidth: 80,
                   }}
                 >
@@ -174,7 +175,7 @@ export function CustomTablePane() {
               ))}
               <th
                 style={{
-                  borderBottom: "1px solid rgb(var(--color-border) / 0.07)",
+                  borderBottom: "1px solid rgb(var(--color-grid-strong) / 0.7)",
                   width: 28,
                 }}
               />
@@ -187,11 +188,17 @@ export function CustomTablePane() {
                 <tr
                   key={ri}
                   style={{
-                    borderTop: "1px solid rgb(var(--color-border) / 0.05)",
+                    borderTop: "1px solid rgb(var(--color-grid) / 0.45)",
                   }}
                 >
                   {columns.map((_, ci) => (
-                    <td key={ci} className="p-0 align-top">
+                    <td
+                      key={ci}
+                      className="p-0 align-top"
+                      style={{
+                        borderRight: "1px solid rgb(var(--color-grid) / 0.45)",
+                      }}
+                    >
                       <input
                         value={row[ci] ?? ""}
                         onChange={(e) =>
