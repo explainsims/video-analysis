@@ -9,6 +9,7 @@ import {
   Minimize2,
   Pause,
   Play,
+  Shrink,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -54,6 +55,8 @@ export function VideoPane({ engineRef, fps }: Props) {
   const setZeroFirstPoint = useAnalysisStore((s) => s.setZeroFirstPoint);
   const expandedPane = useAnalysisStore((s) => s.expandedPane);
   const setExpandedPane = useAnalysisStore((s) => s.setExpandedPane);
+  const fitToWindow = useAnalysisStore((s) => s.fitToWindow);
+  const setFitToWindow = useAnalysisStore((s) => s.setFitToWindow);
   const clearPoints = useAnalysisStore((s) => s.clearPoints);
   const playSpeed = useAnalysisStore((s) => s.playSpeed);
   const setPlaySpeed = useAnalysisStore((s) => s.setPlaySpeed);
@@ -174,6 +177,19 @@ export function VideoPane({ engineRef, fps }: Props) {
             <Trash2 size={12} /> Clear points
           </button>
         )}
+        <button
+          onClick={() => setFitToWindow(!fitToWindow)}
+          className="btn-soft"
+          data-active={fitToWindow ? "true" : undefined}
+          style={{ padding: "5px 8px", fontSize: 11 }}
+          title={
+            fitToWindow
+              ? "Restore default sizing"
+              : "Fit the whole interface to the window so it stays on a single page"
+          }
+        >
+          <Shrink size={13} />
+        </button>
         <button
           onClick={() => setExpandedPane(isExpanded ? null : "video")}
           className="btn-soft"
@@ -367,6 +383,49 @@ export function VideoPane({ engineRef, fps }: Props) {
             frame {selectedFrame}
             {video && ` / ${Math.max(1, Math.floor(video.durationSec * fps)) - 1}`}
           </span>
+          {video && (() => {
+            const tOffset =
+              zeroFirstPoint && active && active.points.length > 0
+                ? active.points[0].tSec
+                : 0;
+            const isZeroed = zeroFirstPoint && tOffset > 0;
+            const curT = selectedFrame / fps - tOffset;
+            const totalT = video.durationSec - tOffset;
+            return (
+              <span
+                className="font-mono text-[11px] tabular flex items-center gap-1.5 ml-2"
+                style={{
+                  color: isZeroed
+                    ? "rgb(var(--color-accent))"
+                    : "rgb(var(--color-muted))",
+                  fontWeight: isZeroed ? 600 : 400,
+                }}
+                title={
+                  isZeroed
+                    ? `Time is zeroed at first tracked point (offset ${tOffset.toFixed(3)} s).`
+                    : "Time relative to start of video"
+                }
+              >
+                {isZeroed && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      letterSpacing: "0.05em",
+                      textTransform: "uppercase",
+                      padding: "1px 5px",
+                      borderRadius: 999,
+                      background: "rgb(var(--color-accent) / 0.18)",
+                      color: "rgb(var(--color-accent))",
+                      fontWeight: 700,
+                    }}
+                  >
+                    t₀
+                  </span>
+                )}
+                {curT.toFixed(2)}s / {totalT.toFixed(2)}s
+              </span>
+            );
+          })()}
         </div>
         {video && (
           <input

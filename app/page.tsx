@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { ActionRibbon } from "@/components/ActionRibbon";
+import { CustomTablePane } from "@/components/CustomTablePane";
 import { GraphPane } from "@/components/GraphPane";
 import { Modals } from "@/components/Modals";
 import { TablePane } from "@/components/TablePane";
@@ -65,9 +66,17 @@ export default function Page() {
   };
 
   const expandedPane = useAnalysisStore((s) => s.expandedPane);
+  const fitToWindow = useAnalysisStore((s) => s.fitToWindow);
+  const showCustomTable = useAnalysisStore((s) => s.showCustomTable);
+
+  const mainClass = fitToWindow
+    ? "h-screen overflow-hidden flex flex-col bg-bg"
+    : "min-h-screen flex flex-col bg-bg";
+  const splitMinRow = fitToWindow ? 0 : 280;
+  const tableMinRow = fitToWindow ? 0 : 180;
 
   return (
-    <main className="min-h-screen flex flex-col bg-bg">
+    <main className={mainClass}>
       <TopBar />
       <ActionRibbon />
       {expandedPane ? (
@@ -85,17 +94,39 @@ export default function Page() {
         </div>
       ) : (
         <div
-          className="flex-1 grid gap-4 p-4 grid-cols-1 lg:grid-cols-[1.55fr_1fr]"
-          style={{ gridTemplateRows: "minmax(280px, 1fr) minmax(180px, auto)" }}
+          className="flex-1 grid gap-4 p-4 grid-cols-1 lg:grid-cols-[1.55fr_1fr] min-h-0"
+          style={{
+            gridTemplateRows: `minmax(${splitMinRow}px, 1fr) minmax(${tableMinRow}px, ${
+              fitToWindow ? "1fr" : "auto"
+            })`,
+          }}
         >
-          <div className="min-h-[280px] min-w-0">
+          <div
+            className="min-w-0 min-h-0"
+            style={{ minHeight: fitToWindow ? 0 : 280 }}
+          >
             <VideoPane engineRef={engineRef} fps={fps} />
           </div>
-          <div className="min-h-[280px] min-w-0">
+          <div
+            className="min-w-0 min-h-0"
+            style={{ minHeight: fitToWindow ? 0 : 280 }}
+          >
             <GraphPane onScrub={seekToFrame} />
           </div>
-          <div className="lg:col-span-2 min-h-[180px]">
-            <TablePane onSelect={seekToFrame} />
+          <div
+            className={`lg:col-span-2 min-w-0 min-h-0 grid gap-4 ${
+              showCustomTable ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
+            }`}
+            style={{ minHeight: fitToWindow ? 0 : 180 }}
+          >
+            <div className="min-w-0 min-h-0">
+              <TablePane onSelect={seekToFrame} />
+            </div>
+            {showCustomTable && (
+              <div className="min-w-0 min-h-0">
+                <CustomTablePane />
+              </div>
+            )}
           </div>
         </div>
       )}

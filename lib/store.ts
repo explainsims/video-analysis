@@ -60,6 +60,14 @@ export interface AnalysisState {
   zeroFirstPoint: boolean;
   /** Which pane is full-screen-within-page, if any. */
   expandedPane: "video" | "graph" | null;
+  /** When on, the whole app is constrained to the viewport so the entire
+   *  interface stays visible on a single page (no scrolling). */
+  fitToWindow: boolean;
+
+  /** User-editable custom data table (independent of tracked points). */
+  customTable: CustomTableData;
+  /** Whether the custom data table pane is shown. */
+  showCustomTable: boolean;
 
   /** User-editable project title (used for save / export filenames). */
   projectName: string;
@@ -84,6 +92,15 @@ export interface AnalysisState {
   setShowOverlays: (b: boolean) => void;
   setZeroFirstPoint: (b: boolean) => void;
   setExpandedPane: (p: "video" | "graph" | null) => void;
+  setFitToWindow: (b: boolean) => void;
+
+  setShowCustomTable: (b: boolean) => void;
+  addCustomTableColumn: () => void;
+  renameCustomTableColumn: (idx: number, name: string) => void;
+  removeCustomTableColumn: (idx: number) => void;
+  setCustomTableCell: (row: number, col: number, value: string) => void;
+  removeCustomTableRow: (row: number) => void;
+  clearCustomTable: () => void;
 
   setProjectName: (s: string) => void;
   setSelectedPoint: (p: SelectedPoint | null) => void;
@@ -130,6 +147,27 @@ const DEFAULT_AXES: Axes = { originPx: [0, 0], rotationRad: 0 };
 
 const OBJECT_COLORS = ["#2563eb", "#db2777", "#7c3aed", "#16a34a", "#ea580c"];
 
+export interface CustomTableData {
+  columns: string[];
+  rows: string[][];
+}
+
+function defaultCustomTable(): CustomTableData {
+  return {
+    columns: ["Column 1", "Column 2"],
+    rows: [
+      ["", ""],
+      ["", ""],
+    ],
+  };
+}
+
+function ensureRowLength(row: string[], cols: number): string[] {
+  if (row.length === cols) return row;
+  if (row.length > cols) return row.slice(0, cols);
+  return [...row, ...Array(cols - row.length).fill("")];
+}
+
 function newObject(index: number): TrackedObject {
   const letter = String.fromCharCode(65 + index);
   return {
@@ -155,6 +193,9 @@ const initial = (): Pick<
   | "showOverlays"
   | "zeroFirstPoint"
   | "expandedPane"
+  | "fitToWindow"
+  | "customTable"
+  | "showCustomTable"
   | "projectName"
   | "selectedPoint"
   | "playSpeed"
@@ -176,6 +217,9 @@ const initial = (): Pick<
     showOverlays: true,
     zeroFirstPoint: false,
     expandedPane: null,
+    fitToWindow: false,
+    customTable: defaultCustomTable(),
+    showCustomTable: false,
     projectName: "Untitled project",
     selectedPoint: null,
     playSpeed: 1,
@@ -219,6 +263,53 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   setShowOverlays: (b) => set({ showOverlays: b }),
   setZeroFirstPoint: (b) => set({ zeroFirstPoint: b }),
   setExpandedPane: (p) => set({ expandedPane: p }),
+  setFitToWindow: (b) => set({ fitToWindow: b }),
+
+  setShowCustomTable: (b) => set({ showCustomTable: b }),
+  addCustomTableColumn: () =>
+    set((s) => {
+      const columns = [...s.customTable.columns, `Column ${s.customTable.columns.length + 1}`];
+      const rows = s.customTable.rows.map((r) => [...r, ""]);
+      return { customTable: { columns, rows } };
+    }),
+  renameCustomTableColumn: (idx, name) =>
+    set((s) => {
+      if (idx < 0 || idx >= s.customTable.columns.length) return s;
+      const columns = s.customTable.columns.map((c, i) => (i === idx ? name : c));
+      return { customTable: { ...s.customTable, columns } };
+    }),
+  removeCustomTableColumn: (idx) =>
+    set((s) => {
+      if (s.customTable.columns.length <= 1) return s;
+      const columns = s.customTable.columns.filter((_, i) => i !== idx);
+      const rows = s.customTable.rows.map((r) => r.filter((_, i) => i !== idx));
+      return { customTable: { columns, rows } };
+    }),
+  setCustomTableCell: (row, col, value) =>
+    set((s) => {
+      const cols = s.customTable.columns.length;
+      let rows = s.customTable.rows.map((r) => ensureRowLength([...r], cols));
+      while (rows.length <= row) rows.push(Array(cols).fill(""));
+      rows = rows.map((r, i) =>
+        i === row ? r.map((c, j) => (j === col ? value : c)) : r
+      );
+      // Auto-add a trailing empty row when the user types into the last row.
+      const last = rows[rows.length - 1];
+      const lastIsEmpty = last.every((c) => c === "");
+      if (!lastIsEmpty) rows.push(Array(cols).fill(""));
+      return { customTable: { columns: s.customTable.columns, rows } };
+    }),
+  removeCustomTableRow: (row) =>
+    set((s) => {
+      if (row < 0 || row >= s.customTable.rows.length) return s;
+      const rows = s.customTable.rows.filter((_, i) => i !== row);
+      const cols = s.customTable.columns.length;
+      // Always keep at least one empty trailing row so the user can add data.
+      if (rows.length === 0) rows.push(Array(cols).fill(""));
+      return { customTable: { ...s.customTable, rows } };
+    }),
+  clearCustomTable: () =>
+    set(() => ({ customTable: defaultCustomTable() })),
 
   setProjectName: (s) => set({ projectName: s }),
   setSelectedPoint: (p) => set({ selectedPoint: p }),
