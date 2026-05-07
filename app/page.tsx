@@ -72,8 +72,6 @@ export default function Page() {
   const mainClass = fitToWindow
     ? "h-screen overflow-hidden flex flex-col bg-bg"
     : "min-h-screen flex flex-col bg-bg";
-  const splitMinRow = fitToWindow ? 0 : 280;
-  const tableMinRow = fitToWindow ? 0 : 180;
 
   return (
     <main className={mainClass}>
@@ -96,28 +94,21 @@ export default function Page() {
         <div
           className="flex-1 grid gap-4 p-4 grid-cols-1 lg:grid-cols-[1.55fr_1fr] min-h-0"
           style={{
-            gridTemplateRows: `minmax(${splitMinRow}px, 1fr) minmax(${tableMinRow}px, ${
-              fitToWindow ? "1fr" : "auto"
-            })`,
+            gridTemplateRows: fitToWindow
+              ? "minmax(0, 1fr) minmax(0, auto)"
+              : "minmax(280px, 1fr) minmax(180px, auto)",
           }}
         >
-          <div
-            className="min-w-0 min-h-0"
-            style={{ minHeight: fitToWindow ? 0 : 280 }}
-          >
+          <div className="min-w-0 min-h-0">
             <VideoPane engineRef={engineRef} fps={fps} />
           </div>
-          <div
-            className="min-w-0 min-h-0"
-            style={{ minHeight: fitToWindow ? 0 : 280 }}
-          >
+          <div className="min-w-0 min-h-0">
             <GraphPane onScrub={seekToFrame} />
           </div>
           <div
             className={`lg:col-span-2 min-w-0 min-h-0 grid gap-4 ${
               showCustomTable ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
             }`}
-            style={{ minHeight: fitToWindow ? 0 : 180 }}
           >
             <div className="min-w-0 min-h-0">
               <TablePane onSelect={seekToFrame} />

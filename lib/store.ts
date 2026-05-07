@@ -58,6 +58,10 @@ export interface AnalysisState {
   /** Treat the first tracked point's t as t=0 (subtracts the offset from
    *  every row). Useful when tracking starts mid-clip. */
   zeroFirstPoint: boolean;
+  /** Manually-zeroed reference frame (the time displayed under the video is
+   *  shown relative to this frame). Mutually exclusive with zeroFirstPoint —
+   *  this lets users time experiments without placing tracking dots. */
+  manualTimeZeroFrame: number | null;
   /** Which pane is full-screen-within-page, if any. */
   expandedPane: "video" | "graph" | null;
   /** When on, the whole app is constrained to the viewport so the entire
@@ -91,6 +95,7 @@ export interface AnalysisState {
 
   setShowOverlays: (b: boolean) => void;
   setZeroFirstPoint: (b: boolean) => void;
+  setManualTimeZeroFrame: (frame: number | null) => void;
   setExpandedPane: (p: "video" | "graph" | null) => void;
   setFitToWindow: (b: boolean) => void;
 
@@ -192,6 +197,7 @@ const initial = (): Pick<
   | "fpsOverride"
   | "showOverlays"
   | "zeroFirstPoint"
+  | "manualTimeZeroFrame"
   | "expandedPane"
   | "fitToWindow"
   | "customTable"
@@ -216,6 +222,7 @@ const initial = (): Pick<
     fpsOverride: null,
     showOverlays: true,
     zeroFirstPoint: false,
+    manualTimeZeroFrame: null,
     expandedPane: null,
     fitToWindow: false,
     customTable: defaultCustomTable(),
@@ -239,6 +246,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       axes: { originPx: [meta.width / 2, meta.height / 2], rotationRad: 0 },
       axesSet: false,
       calibration: null,
+      manualTimeZeroFrame: null,
       // If the user hasn't named the project yet, derive one from the file.
       projectName:
         s.projectName === "Untitled project" || s.projectName === ""
@@ -261,7 +269,14 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   setFpsOverride: (fps) => set({ fpsOverride: fps }),
 
   setShowOverlays: (b) => set({ showOverlays: b }),
-  setZeroFirstPoint: (b) => set({ zeroFirstPoint: b }),
+  setZeroFirstPoint: (b) =>
+    set((s) => ({
+      zeroFirstPoint: b,
+      // Switching to point-based zero clears any manual zero so the two
+      // sources can't fight each other.
+      manualTimeZeroFrame: b ? null : s.manualTimeZeroFrame,
+    })),
+  setManualTimeZeroFrame: (frame) => set({ manualTimeZeroFrame: frame }),
   setExpandedPane: (p) => set({ expandedPane: p }),
   setFitToWindow: (b) => set({ fitToWindow: b }),
 

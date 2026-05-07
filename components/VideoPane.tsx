@@ -10,14 +10,16 @@ import {
   Pause,
   Play,
   Shrink,
+  TimerReset,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { CanvasOverlay } from "@/components/overlays/CanvasOverlay";
 import { deriveObject } from "@/lib/derived";
 import { loadVideoFile } from "@/lib/loadVideoFile";
-import { showConfirm } from "@/lib/modal";
+import { showConfirm, showPrompt } from "@/lib/modal";
 import { useAnalysisStore } from "@/lib/store";
 import { VideoEngine } from "@/lib/videoEngine";
 
@@ -60,6 +62,9 @@ export function VideoPane({ engineRef, fps }: Props) {
   const clearPoints = useAnalysisStore((s) => s.clearPoints);
   const playSpeed = useAnalysisStore((s) => s.playSpeed);
   const setPlaySpeed = useAnalysisStore((s) => s.setPlaySpeed);
+  const setFpsOverride = useAnalysisStore((s) => s.setFpsOverride);
+  const manualTimeZeroFrame = useAnalysisStore((s) => s.manualTimeZeroFrame);
+  const setManualTimeZeroFrame = useAnalysisStore((s) => s.setManualTimeZeroFrame);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -122,6 +127,25 @@ export function VideoPane({ engineRef, fps }: Props) {
   const overlaysToggleEnabled = axesSet || calibration != null;
   const isExpanded = expandedPane === "video";
 
+  const onFpsClick = async () => {
+    if (!video) return;
+    const v = await showPrompt({
+      title: "Recording frame rate",
+      body: (
+        <>
+          Browsers can&apos;t read fps from a video file directly. Common values: 24,
+          30, 60, 120, 240. Defaults to 30 unless you set it here.
+        </>
+      ),
+      initialValue: String(fps),
+      type: "number",
+      placeholder: "e.g. 60",
+    });
+    if (v === null) return;
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) setFpsOverride(n);
+  };
+
   const onClearActive = async () => {
     if (!active || active.points.length === 0) return;
     const ok = await showConfirm({
@@ -149,6 +173,20 @@ export function VideoPane({ engineRef, fps }: Props) {
         />
         <span>Video tracker</span>
         {sizeLabel && <span className="pill ml-1">{sizeLabel}</span>}
+        {video && (
+          <button
+            onClick={onFpsClick}
+            title="Click to change frame rate"
+            className="flex items-center gap-1 px-2 py-0.5 rounded-full"
+            style={{
+              border: "1.5px solid rgb(var(--color-border) / 0.12)",
+              background: "rgb(var(--color-bg-alt))",
+            }}
+          >
+            <span className="text-[10px] text-muted font-semibold">FPS</span>
+            <span className="text-[11px] font-semibold tabular">{fps}</span>
+          </button>
+        )}
         <div className="flex-1" />
         <Toggle
           label="Show axes & calibration"
@@ -238,7 +276,11 @@ export function VideoPane({ engineRef, fps }: Props) {
             <video
               ref={videoRef}
               src={videoUrl}
-              className="max-w-full max-h-full"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+              }}
               playsInline
               muted
               controls={false}
@@ -379,16 +421,57 @@ export function VideoPane({ engineRef, fps }: Props) {
             ))}
           </div>
           <div className="flex-1" />
-          <span className="font-mono text-[11px] text-muted tabular">
+          {video && (
+            <button
+              onClick={() => setManualTimeZeroFrame(selectedFrame)}
+              disabled={zeroFirstPoint}
+              title={
+                zeroFirstPoint
+                  ? "Disabled — \"Zero first point time\" already controls the time origin"
+                  : manualTimeZeroFrame !== null
+                  ? `Re-zero the time display at the current frame (currently zeroed at frame ${manualTimeZeroFrame})`
+                  : "Zero the time display at the current frame (no tracking dot needed)"
+              }
+              className="btn-soft disabled:opacity-40 disabled:cursor-not-allowed"
+              data-active={
+                !zeroFirstPoint && manualTimeZeroFrame !== null ? "true" : undefined
+              }
+              style={{ padding: "5px 10px", fontSize: 11 }}
+            >
+              <TimerReset size={12} /> Zero here
+            </button>
+          )}
+          {video && manualTimeZeroFrame !== null && !zeroFirstPoint && (
+            <button
+              onClick={() => setManualTimeZeroFrame(null)}
+              title="Clear manual time zero"
+              className="btn-soft"
+              style={{ padding: "5px 6px", fontSize: 11 }}
+            >
+              <X size={12} />
+            </button>
+          )}
+          <span className="font-mono text-[11px] text-muted tabular ml-1">
             frame {selectedFrame}
             {video && ` / ${Math.max(1, Math.floor(video.durationSec * fps)) - 1}`}
           </span>
           {video && (() => {
-            const tOffset =
+            const pointOffset =
               zeroFirstPoint && active && active.points.length > 0
                 ? active.points[0].tSec
                 : 0;
-            const isZeroed = zeroFirstPoint && tOffset > 0;
+            const manualOffset =
+              !zeroFirstPoint && manualTimeZeroFrame !== null
+                ? manualTimeZeroFrame / fps
+                : 0;
+            const tOffset = pointOffset || manualOffset;
+            const zeroSource: "point" | "manual" | null =
+              pointOffset > 0
+                ? "point"
+                : manualTimeZeroFrame !== null && !zeroFirstPoint
+                ? "manual"
+                : null;
+            const isZeroed = zeroSource !== null;
             const curT = selectedFrame / fps - tOffset;
             const totalT = video.durationSec - tOffset;
             return (
@@ -401,8 +484,10 @@ export function VideoPane({ engineRef, fps }: Props) {
                   fontWeight: isZeroed ? 600 : 400,
                 }}
                 title={
-                  isZeroed
+                  zeroSource === "point"
                     ? `Time is zeroed at first tracked point (offset ${tOffset.toFixed(3)} s).`
+                    : zeroSource === "manual"
+                    ? `Time is manually zeroed at frame ${manualTimeZeroFrame} (offset ${tOffset.toFixed(3)} s).`
                     : "Time relative to start of video"
                 }
               >
@@ -419,7 +504,7 @@ export function VideoPane({ engineRef, fps }: Props) {
                       fontWeight: 700,
                     }}
                   >
-                    t₀
+                    {zeroSource === "manual" ? "t₀ manual" : "t₀"}
                   </span>
                 )}
                 {curT.toFixed(2)}s / {totalT.toFixed(2)}s

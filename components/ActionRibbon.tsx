@@ -13,7 +13,7 @@ import { useRef } from "react";
 import { loadVideoFile } from "@/lib/loadVideoFile";
 import { showAlert, showModal, showPrompt } from "@/lib/modal";
 import { downloadProject, exportProject, readProjectFile } from "@/lib/projectFile";
-import { effectiveFps, useAnalysisStore, type Mode } from "@/lib/store";
+import { useAnalysisStore, type Mode } from "@/lib/store";
 
 const STEP_OPTIONS = [1, 2, 5];
 
@@ -56,8 +56,6 @@ export function ActionRibbon() {
   const setActiveObject = useAnalysisStore((s) => s.setActiveObject);
   const addObject = useAnalysisStore((s) => s.addObject);
   const video = useAnalysisStore((s) => s.video);
-  const fps = useAnalysisStore((s) => effectiveFps(s));
-  const setFpsOverride = useAnalysisStore((s) => s.setFpsOverride);
   const calibration = useAnalysisStore((s) => s.calibration);
   const loadProject = useAnalysisStore((s) => s.loadProject);
   const showCustomTable = useAnalysisStore((s) => s.showCustomTable);
@@ -172,25 +170,6 @@ export function ActionRibbon() {
     if (Number.isFinite(n) && n >= 1) setStepSize(Math.round(n));
   };
 
-  const onFpsClick = async () => {
-    if (!video) return;
-    const v = await showPrompt({
-      title: "Recording frame rate",
-      body: (
-        <>
-          Browsers can't read fps from a video file directly. Common values: 24, 30,
-          60, 120, 240. Defaults to 30 unless you set it here.
-        </>
-      ),
-      initialValue: String(fps),
-      type: "number",
-      placeholder: "e.g. 60",
-    });
-    if (v === null) return;
-    const n = Number(v);
-    if (Number.isFinite(n) && n > 0) setFpsOverride(n);
-  };
-
   return (
     <div
       className="flex items-center gap-2 px-5 py-3 flex-wrap"
@@ -285,17 +264,6 @@ export function ActionRibbon() {
           {!STEP_OPTIONS.includes(stepSize) ? stepSize : "…"}
         </button>
       </div>
-
-      <button
-        onClick={onFpsClick}
-        disabled={!video}
-        title="Click to change frame rate"
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{ border: "1.5px solid rgb(var(--color-border) / 0.12)" }}
-      >
-        <span className="text-xs text-muted font-semibold">FPS</span>
-        <span className="text-xs font-semibold tabular">{fps}</span>
-      </button>
 
       <button
         onClick={() => projectInput.current?.click()}
