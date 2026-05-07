@@ -120,7 +120,7 @@ export default function Page() {
         </div>
       ) : (
         <div
-          className="grid gap-4 p-4 grid-cols-1 lg:grid-cols-[1.55fr_1fr]"
+          className="grid gap-4 p-4 grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]"
           style={{
             gridTemplateRows: `minmax(320px, ${pinnedTopRow}) auto`,
           }}
