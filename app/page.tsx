@@ -11,10 +11,11 @@ import { VideoPane } from "@/components/VideoPane";
 import { effectiveFps, useAnalysisStore } from "@/lib/store";
 import type { VideoEngine } from "@/lib/videoEngine";
 
-// p-4 (top + bottom) + gap-4 between rows + minmax floor for the table row.
-// Used to compute the pinned video-row height in default layout so the video
-// pane keeps its initial size as users add data.
-const TABLE_ROW_RESERVED_PX = 180; // empty-table card height
+// p-4 (top + bottom) + gap-4 between rows + min-content floor for the table
+// row. The reserved-px value is the natural height of an empty data-table card
+// (card border + header + a single line of muted placeholder text), so the
+// video+graph row above gets all the space the empty table doesn't need.
+const TABLE_ROW_RESERVED_PX = 108;
 const PADDING_AND_GAP_PX = 16 + 16 + 16; // p-4 top + p-4 bottom + gap-4
 
 export default function Page() {
